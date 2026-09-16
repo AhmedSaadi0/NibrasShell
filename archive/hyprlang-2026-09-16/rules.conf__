@@ -65,43 +65,38 @@ windowrule=workspace 9,match:initial_title .*MetaTrader.*
 windowrule=workspace 9,match:class org.wireshark.Wireshark
 
 # Dialogs
-windowrule=float 1,match:class ^(.*org.kde.polkit-kde-authentication-agent-1.*)$
-windowrule=float 1,match:class .*portal.*
-windowrule=float 1,match:class ^(.*org.kde.kteatime.*)$
-windowrule=float 1,match:title ^(.*Open File.*)$
-windowrule=float 1,match:title ^(.*Open Folder.*)$
-windowrule=float 1,match:title ^(.*Save As.*)$
-windowrule=float 1,match:title ^(.*Library.*)$
-# windowrule=no_border 1,match:class ^(.*org.libretro.RetroArch.*)$,match:title ^(.*)$,match:maximize 1
-windowrule=float 1,match:class ^(.*dialog.*)$
-windowrule=float 1,match:title ^(.*dialog.*)$
-windowrule=float 1,match:title ^(.*Winetricks.*)$
+windowrule=float on,match:class ^(.*org.kde.polkit-kde-authentication-agent-1.*)$
+windowrule=float on,match:class .*portal.*
+windowrule=float on,match:class ^(.*org.kde.kteatime.*)$
+windowrule=float on,match:title ^(.*Open File.*)$
+windowrule=float on,match:title ^(.*Open Folder.*)$
+windowrule=float on,match:title ^(.*Save As.*)$
+windowrule=float on,match:title ^(.*Library.*)$
+# windowrule=border_size 0,maximize on,match:class ^(.*org.libretro.RetroArch.*)$,match:title ^(.*)$
+windowrule=float on,match:class ^(.*dialog.*)$
+windowrule=float on,match:title ^(.*dialog.*)$
+windowrule=float on,match:title ^(.*Winetricks.*)$
 
 # Floating
-windowrule=float 1,match:class ^(.*com.github.hluk.copyq.*)$
-windowrule=float 1,match:class Windscribe
+windowrule=float on,match:class ^(.*com.github.hluk.copyq.*)$
+windowrule=float on,match:class Windscribe
 
-# Layer rules
-# layerrule=blur,session
-# layerrule=blur,popup
-# layerrule=ignorezero,match:class ^(.*GLava.*)$
+# Layer rules (0.53+ syntax: blur on + match:namespace)
+# layerrule=blur on,match:namespace session
+# layerrule=blur on,match:namespace popup
 
 # Others
-windowrule=pin 1,match:class ^(.*9i.*)$
-windowrule=no_blur 1,match:class ^(.*GLava.*)$
-windowrule=no_blur 1,match:class ^(.*neovide.*)$
-# windowrule=no_border 1,match:class ^(.*GLava.*)$
-windowrule=pseudo 1,match:class ^(.*GLava.*)$
-windowrule=no_shadow 1,match:class ^(.*GLava.*)$
-windowrule=float 1,match:class ^(.*GLava.*)$
+windowrule=pin on,match:class ^(.*9i.*)$
+windowrule=no_blur on,match:class ^(.*GLava.*)$
+windowrule=no_blur on,match:class ^(.*neovide.*)$
+# windowrule=border_size 0,match:class ^(.*GLava.*)$
+windowrule=pseudo on,match:class ^(.*GLava.*)$
+windowrule=no_shadow on,match:class ^(.*GLava.*)$
+windowrule=float on,match:class ^(.*GLava.*)$
 
 
-windowrule = float 1, match:title ^(NibrasShellSettings)$
+windowrule = float on, match:title ^(NibrasShellSettings)$
 windowrule = size 950 950, match:title ^(NibrasShellSettings)$
-windowrule = center 1, match:title ^(NibrasShellSettings)$
+windowrule = center on, match:title ^(NibrasShellSettings)$
 
 layerrule = blur on, ignore_alpha 0, match:namespace NibrasShell:logout
-# layerrule = blur, NibrasShell:logout
-# layerrule = ignorealpha 0, NibrasShell:logout
-# layerrule = ignorealpha 0, NibrasShell:logout
-# layerrule = dimaround, NibrasShell:logout

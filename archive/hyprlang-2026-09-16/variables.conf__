@@ -69,8 +69,7 @@ animations {
 
 
 dwindle {
-    # See https://wiki.hyprland.org/Configuring/Dwindle-Layout/ for more
-    # pseudotile = true 
+    # See https://wiki.hypr.land/Configuring/Layouts/Dwindle-Layout/ for more
     preserve_split = true 
     # special_scale_factor = 1
     # permanent_direction_override = true 
@@ -81,7 +80,7 @@ dwindle {
 }
 
 # master {
-#     # See https://wiki.hyprland.org/Configuring/Master-Layout/ for more
+#     # See https://wiki.hypr.land/Configuring/Layouts/Master-Layout/ for more
 #     new_is_master = true
 #     allow_small_split = true
 #     special_scale_factor = 1
@@ -93,18 +92,16 @@ dwindle {
 # }
 
 gestures {
-    # workspace_swipe = true
     workspace_swipe_invert = false
     # workspace_swipe_distance = 100
     # workspace_swipe_cancel_ratio = 0.1
-    # workspace_swipe_numbered = true
     # workspace_swipe_create_new = false
     gesture = 3, horizontal, workspace
     gesture = 3, up, mod: SUPER, scale: 1.5, fullscreen
 }
 
 # Example per-device config
-# See https://wiki.hyprland.org/Configuring/Keywords/#executing for more
+# See https://wiki.hypr.land/Configuring/Basics/Variables/ for more
 device:epic-mouse-v1 {
     # sensitivity = -0.5
 }

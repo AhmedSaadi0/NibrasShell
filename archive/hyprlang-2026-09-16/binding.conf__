@@ -158,4 +158,4 @@ binddm = $mainMod, mouse:273, Resize window, resizewindow
 bindd = $mainMod, b, Send focused window to bottom layer, exec, hyprctl dispatch layer "bottom" focused
 bind = $mainMod $alttKey, s, exec, systemctl suspend
 
-bindl=,switch:on:[switch name],exec,hyprctl keyword monitor "HDMI-1-0,1920x1080@144,1600x0,1" 
+bindl=,switch:on:Lid Switch,exec,hyprctl keyword monitor "HDMI-1-0,1920x1080@144,1600x0,1" 

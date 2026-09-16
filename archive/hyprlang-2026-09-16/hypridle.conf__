@@ -1,0 +1,31 @@
+general {
+    lock_cmd = hyprlock  # Lock command
+    before_sleep = hyprlock  # Lock device before sleep
+}
+
+# 1. Dim lights after 5 minutes of inactivity
+listener {
+    timeout = 300 # 300 seconds = 5 minutes
+    on-timeout = brightnessctl -s set 50%  # Save current brightness and reduce to 50%
+    on-resume = brightnessctl -r  # Restore original brightness upon return
+}
+
+# 2. Lock the screen after 20 minutes
+listener {
+    timeout = 1200 # 1200 seconds = 20 minutes
+    on-timeout = hyprlock  # Execute the lock command
+}
+
+# 3. Put the system to sleep after one hour
+listener {
+    timeout = 3600 # 3600 seconds = one hour
+    on-timeout = systemctl suspend  # Put the system to sleep
+    on-resume = hyprctl dispatch dpms on  # Turn on the screen when waking up
+}
+
+# Turn off the screen after 10 minutes
+listener {
+    timeout = 600 # 600 seconds = 10 minutes
+    on-timeout = hyprctl dispatch dpms off  # Turn off the screen
+    on-resume = hyprctl dispatch dpms on  # Turn it on when waking up
+}
