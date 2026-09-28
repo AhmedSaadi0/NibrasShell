@@ -526,7 +526,19 @@ def install_nibrasshell():
     hypr_dest_dir = os.path.join(config_dir, "hypr")
 
     # Copy main config folders
-    shutil.copytree(script_dir, hypr_dest_dir, dirs_exist_ok=True)
+    # monitors.conf is user-owned: the shell rewrites it whenever a display
+    # setting changes, so copying the repo template would wipe saved values.
+    preserved_configs = {"monitors.conf"}
+    for item in sorted(os.listdir(script_dir)):
+        src = os.path.join(script_dir, item)
+        dst = os.path.join(hypr_dest_dir, item)
+        if item in preserved_configs and os.path.exists(dst):
+            print(f"{YELLOW}Keeping existing {item}{NC}")
+            continue
+        if os.path.isdir(src):
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        elif os.path.isfile(src):
+            shutil.copy2(src, dst)
     shutil.copytree(
         os.path.join(hypr_dest_dir, "config", "quickshell"),
         os.path.join(config_dir, "quickshell"),

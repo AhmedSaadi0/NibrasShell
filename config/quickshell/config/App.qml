@@ -21,6 +21,8 @@ Singleton {
     readonly property string themeCacheFilePath: cacheFolderPath + "/theme.json"
     readonly property string todoFilePath: cacheFolderPath + "/todo.json"
     readonly property string themeCacheFolderPath: cacheFolderPath + "/themes/"
+    // الملف الذي يحتفظ Hyprland بقواعد الشاشات (المقياس/الدقة/الموضع)
+    readonly property string monitorsConfPath: homePath + ".config/hypr/monitors.conf"
     readonly property string pythonScriptsPath: mainPath + "/scripts/python"
     readonly property string pythonPath: cacheFolderPath + "/venv/bin/python"
 
