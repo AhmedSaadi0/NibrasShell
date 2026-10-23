@@ -150,7 +150,7 @@ Item {
 
                                 onClicked: {
                                     if (!isWsActive)
-                                        Hyprland.dispatch(`workspace ${wsId}`);
+                                        Quickshell.execDetached(["hyprctl", "dispatch", `hl.dsp.focus({workspace = ${wsId}})`]);
                                 }
 
                                 onReleased: {
@@ -234,7 +234,7 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: Hyprland.dispatch(`workspace ${wsId}`)
+                            onClicked: Quickshell.execDetached(["hyprctl", "dispatch", `hl.dsp.focus({workspace = ${wsId}})`])
                         }
                         Text {
                             anchors.centerIn: parent
@@ -274,7 +274,7 @@ Item {
                                 winAddress = "0x" + winAddress;
                             }
 
-                            Hyprland.dispatch(`movetoworkspacesilent ${wsId},address:${winAddress}`);
+                            Quickshell.execDetached(["hyprctl", "dispatch", `hl.dsp.window.move({workspace = ${wsId}, follow = false, window = "address:${winAddress}"})`]);
                             drop.accept();
                         } else {
                             console.warn("[Drop Fail] Source or address missing");
@@ -286,7 +286,7 @@ Item {
                     anchors.fill: parent
                     z: -1
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Hyprland.dispatch(`workspace ${wsId}`)
+                    onClicked: Quickshell.execDetached(["hyprctl", "dispatch", `hl.dsp.focus({workspace = ${wsId}})`])
                 }
             }
         }

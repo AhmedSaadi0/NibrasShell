@@ -19,11 +19,14 @@ Item {
         _dispatch("Qt Style", Utils.Helper.changeQtStyle(settings.qtThemeStyle));
         _dispatch("Kvantum Theme", Utils.Helper.changeKvantumTheme(settings.kvantumTheme));
 
-        const generalFont = `'${settings.fontName}',11,-1,5,50,0,0,0,0,0`;
-        const titleFont = `'${settings.fontName}',11,-1,5,75,0,0,0,0,0`;
-        const smallFont = `'${settings.fontName}',9,-1,5,75,0,0,0,0,0`;
-        const toolBarFont = `'${settings.fontName}',10,-1,5,75,0,0,0,0,0`;
-        const monoFont = "'FantasqueSansM Nerd Font Mono',10,-1,5,50,0,0,0,0,0";
+        // NOTE: raw values, no shell quoting — App.dispatchCommand executes argv
+        // directly (no shell), and kwriteconfig stores the value verbatim.
+        // (Quoting here would land literally in kdeglobals, breaking the font.)
+        const generalFont = `${settings.fontName},11,-1,5,50,0,0,0,0,0`;
+        const titleFont = `${settings.fontName},11,-1,5,75,0,0,0,0,0`;
+        const smallFont = `${settings.fontName},9,-1,5,75,0,0,0,0,0`;
+        const toolBarFont = `${settings.fontName},10,-1,5,75,0,0,0,0,0`;
+        const monoFont = "FantasqueSansM Nerd Font Mono,10,-1,5,50,0,0,0,0,0";
 
         _dispatch("Plasma General Font", Utils.Helper.changePlasmaFont({
             font: generalFont,

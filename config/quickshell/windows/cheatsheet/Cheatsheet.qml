@@ -338,7 +338,7 @@ PanelWindow {
                                         }
 
                                         Text {
-                                            text: modelData.description
+                                            text: modelData.description ? modelData.description : qsTr("No description — document with { desc = ... } in hyprland.lua")
                                             font.pixelSize: ThemeManager.selectedTheme.typography.baseFontSize
                                             font.family: ThemeManager.selectedTheme.typography.bodyFont
                                             color: ThemeManager.selectedTheme.colors.onSurface
@@ -360,7 +360,10 @@ PanelWindow {
 
                                                 Text {
                                                     id: dispatcherText
-                                                    text: "⚡ " + modelData.dispatcher
+                                                    // On Lua configs Hyprland reports dispatcher="__lua" with a
+                                                    // numeric id arg — both meaningless to users, so show the
+                                                    // description-first label instead.
+                                                    text: modelData.dispatcher === "__lua" ? qsTr("⚡ Lua bind") : "⚡ " + modelData.dispatcher
                                                     font.pixelSize: ThemeManager.selectedTheme.typography.small
                                                     font.family: ThemeManager.selectedTheme.typography.bodyFont
                                                     color: ThemeManager.selectedTheme.colors.primary
@@ -370,7 +373,7 @@ PanelWindow {
 
                                             Text {
                                                 width: parent.width - dispatcherText.width - 20
-                                                text: modelData.arg ? "📁 " + (modelData.arg.length > 50 ? modelData.arg.substring(0, 50) + "..." : modelData.arg) : ""
+                                                text: (modelData.dispatcher === "__lua" || !modelData.arg) ? "" : "📁 " + (modelData.arg.length > 50 ? modelData.arg.substring(0, 50) + "..." : modelData.arg)
                                                 font.pixelSize: ThemeManager.selectedTheme.typography.small
                                                 font.family: ThemeManager.selectedTheme.typography.bodyFont
                                                 color: ThemeManager.selectedTheme.colors.onSurfaceVariant

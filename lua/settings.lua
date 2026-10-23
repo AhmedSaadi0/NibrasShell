@@ -47,11 +47,11 @@ hl.config({
 	},
 })
 
-hl.config({
-	debug = {
-		damage_tracking = 0,
-	},
-})
+-- hl.config({
+-- 	debug = {
+-- 		damage_tracking = 2,
+-- 	},
+-- })
 
 hl.config({
 	gestures = {

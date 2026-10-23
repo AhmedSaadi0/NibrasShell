@@ -127,8 +127,12 @@ Singleton {
 
     // -------------------------------------------------------------------------
     Component.onCompleted: {
-        Hyprland.dispatch(`exec mkdir -p ${cacheFolderPath}`);
-        Hyprland.dispatch(`exec mkdir -p ${themeCacheFolderPath}`);
+        // Native process execution: never route OS commands through Hyprland IPC.
+        // (Hyprland >= 0.56 Lua wraps dispatch payloads in Lua -> `exec ...` is a syntax error.)
+        // NOTE: list form — the {command:[...]} object form throws TypeError
+        // on Quickshell 0.3.0 (verified by probe).
+        Quickshell.execDetached(["mkdir", "-p", cacheFolderPath]);
+        Quickshell.execDetached(["mkdir", "-p", themeCacheFolderPath]);
     }
 
     readonly property QtObject modelsManager: QtObject {
@@ -352,12 +356,18 @@ Singleton {
     }
 
     function dispatchCommand(description, commandArray) {
-        if (!Array.isArray(commandArray) || commandArray.length === 1) {
+        if (!Array.isArray(commandArray) || commandArray.length === 0) {
             console.warn(`Skipping empty command: ${description}`);
             return;
         }
         console.info("[App] [dispatchCommand] " + description + " -> " + commandArray.join(' '));
-        Hyprland.dispatch(`exec ${commandArray.join(' ')}`);
+        // Verbatim argv via list form (no shell): builders must supply raw
+        // values with NO shell quoting. The {command:[...]} object form throws
+        // TypeError on Quickshell 0.3.0 (verified by probe), and ["sh","-c",
+        // join(" ")] word-splits values containing spaces (e.g. "JF Flat,..."
+        // becomes "JF"). Builders needing shell features (~, globs) must wrap
+        // themselves as ["sh","-c","..."].
+        Quickshell.execDetached(commandArray);
     }
 
     Process {

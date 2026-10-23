@@ -178,8 +178,9 @@ PersistentProperties {
 
     // Animations
     property bool _hyprAnimationsEnabled: true
-    property string _hyprBezier: AnimationConfig.hyprBezierAccelerate
+    property string _hyprBezier: AnimationConfig.hyprBezier
     property string _hyprAnimWindows: AnimationConfig.hyprAnimWindows
+    property string _hyprAnimWindowsIn: AnimationConfig.hyprAnimWindowsIn
     property string _hyprAnimWindowsMove: AnimationConfig.hyprAnimWindowsMove
     property string _hyprAnimWindowsOut: AnimationConfig.hyprAnimWindowsOut
     property string _hyprAnimBorder: AnimationConfig.hyprAnimBorder
@@ -391,6 +392,7 @@ PersistentProperties {
         property alias animationsEnabled: root._hyprAnimationsEnabled
         property alias bezier: root._hyprBezier
         property alias animWindows: root._hyprAnimWindows
+        property alias animWindowsIn: root._hyprAnimWindowsIn
         property alias animWindowsMove: root._hyprAnimWindowsMove
         property alias animWindowsOut: root._hyprAnimWindowsOut
         property alias animBorder: root._hyprAnimBorder

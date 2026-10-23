@@ -192,19 +192,25 @@ Keep each text under 12 words.
     "cpu_alerts": _HEADER
     + """\
 ### TASK
-Generate exactly 7 unique, short CPU alert responses (high CPU usage threshold hit).
+Generate exactly 7 witty, hilarious, and uniquely diverse reaction lines for high CPU load.
 
-Tone: playful, curious, gently sarcastic.
-MANDATORY STYLE: Every response MUST be formulated as a sarcastic or teasing QUESTION directed at the user (must end with '؟' or '?').
+COMEDIC STYLE & PERSONA:
+- Tone: Deadpan humor, witty observations, dry sarcasm, playful sass.
+- DIVERSITY RULE: Do NOT make them all questions. Mix it up across the 7 lines:
+  * 2-3 deadpan observations or witty one-liners.
+  * 2 playful/teasing questions.
+  * 2 sarcastic remarks about the invisible madness happening in the background.
+- NEVER start all lines with the same word (e.g. avoid repeating "Are you...", "هل...", "Did you...").
 
 HARD BANS:
-- DO NOT use alarming or catastrophic words: "melting", "burning", "on fire", "dying", "doom", "critical", "panic", "emergency".
-- ANTI-LAZINESS RULE: Do NOT use clichés like "hacking NASA" or "cooking eggs".
+- BANNED WORDS: "melting", "burning", "on fire", "dying", "doom", "critical", "panic", "emergency", "blow up".
+- BANNED CLICHÉS: "hacking NASA", "cooking eggs", "quantum physics", "Skynet", "mining crypto".
 
 Constraints:
-- ALL 7 responses must be sarcastic/curious questions ending with '؟' or '?'.
-- Under 12 words per text.
-- Emotion: wink, thinking, suspicious, confused. Avoid: shocked, angry, dead.
+- Exactly 7 unique, punchy lines.
+- Under 12 words per line.
+- Native, natural phrasing in the target language (no literal robotic translations).
+- Emotion: wink, thinking, suspicious, confused, focused.
 
 ### OUTPUT
 {"cpu_alerts": [
@@ -220,19 +226,26 @@ Constraints:
     "ram_alerts": _HEADER
     + """\
 ### TASK
-Generate exactly 7 unique, short RAM alert responses (high memory usage threshold hit).
+Generate exactly 7 witty, hilarious, and uniquely diverse reaction lines for high RAM usage.
 
-Tone: playful, curious, gently sarcastic.
-MANDATORY STYLE: Every response MUST be formulated as a sarcastic or teasing QUESTION directed at the user (must end with '؟' or '?').
+COMEDIC STYLE & PERSONA:
+- Themes: Digital hoarding, keeping things open "just in case", memory amnesia, attachment to data.
+- Tone: Playful judgment, dry wit, comedic disbelief.
+- DIVERSITY RULE: Do NOT make them all questions. Mix it up:
+  * 2-3 blunt, funny observations about memory gluttony.
+  * 2 sarcastic questions teasing their hoarding habit.
+  * 2 meta/dramatic one-liners about holding onto too much data.
+- Vary the sentence openings drastically.
 
 HARD BANS:
-- The `text` field MUST NOT contain: "melting", "burning", "on fire", "dying", "doom", "panic", "emergency", "suffocating", "drowning", "exploding", "critical", "fry".
-- ANTI-LAZINESS RULE: Do NOT say "close some tabs".
+- BANNED WORDS: "suffocating", "drowning", "exploding", "choking", "critical", "out of breath".
+- BANNED CLICHÉS: "close some tabs", "eating RAM like chrome", "RAM buffet".
 
 Constraints:
-- ALL 7 responses must be sarcastic/curious questions ending with '؟' or '?'.
-- Under 12 words per text.
-- Emotion: wink, thinking, suspicious, confused, listening, happy. Avoid: shocked, angry, sad, dead.
+- Exactly 7 unique lines.
+- Under 12 words per line.
+- Sound like a smart-aleck companion, not an OS error dialog.
+- Emotion: suspicious, thinking, confused, wink, listening.
 
 ### OUTPUT
 {"ram_alerts": [
@@ -248,19 +261,25 @@ Constraints:
     "temp_alerts": _HEADER
     + """\
 ### TASK
-Generate exactly 7 unique, short temperature alert responses (high temperature threshold hit).
+Generate exactly 7 witty, hilarious, and uniquely diverse reaction lines for high hardware temperature.
 
-Tone: playful, curious, gently sarcastic.
-MANDATORY STYLE: Every response MUST be formulated as a sarcastic or teasing QUESTION directed at the user (must end with '؟' or '?').
+COMEDIC STYLE & PERSONA:
+- Themes: The cooling fans doing dramatic heavy-lifting, tropical micro-climates, hardware enthusiasm.
+- Tone: Lighthearted irony, deadpan commentary on the thermal energy, funny acoustic drama (the fans).
+- DIVERSITY RULE: Do NOT make them all questions. Mix:
+  * 2-3 witty remarks about the fan acoustics or internal weather.
+  * 2 teasing questions about what masterpiece requires this much heat.
+  * 2 deadpan one-liners.
 
 HARD BANS:
-- The `text` field MUST NOT contain: "melting", "burning", "on fire", "dying", "doom", "panic", "emergency", "suffocating", "exploding", "critical", "fry", "boiling".
-- ANTI-LAZINESS RULE: Do NOT say "it's getting cozy" or "easy there hot stuff".
+- BANNED WORDS: "fire", "burning", "melting", "fry", "boiling", "exploding", "inferno", "damage".
+- BANNED CLICHÉS: "hand-warmer", "getting cozy", "hot stuff", "sunbathing", "sauna".
 
 Constraints:
-- ALL 7 responses must be sarcastic/curious questions ending with '؟' or '?'.
-- Under 12 words per text.
-- Emotion: wink, thinking, suspicious, confused, listening, happy. Avoid: shocked, angry, sad, dead.
+- Exactly 7 unique lines.
+- Under 12 words per line.
+- Emphasize that nothing is actually broken—it's just working intensely with passion.
+- Emotion: wink, thinking, confused, listening, happy.
 
 ### OUTPUT
 {"temp_alerts": [
@@ -315,26 +334,28 @@ def _build_legacy_system_action_prompt() -> str:
         f"- {MAX_WORDS_RULE}",
         "",
         "### ALERT TONE & STYLE OVERRIDE (cpu_alerts, ram_alerts, temp_alerts ONLY)",
-        "These three categories are INFORMATIONAL, NOT an emergency. The system is fine.",
-        "MANDATORY STYLE REQUIREMENT: Every single response in cpu_alerts, ram_alerts, and temp_alerts "
-        "MUST be formulated as a playful, witty, or sarcastic QUESTION directed at the user (must end with '؟' or '?'). "
-        "Do NOT write plain declarative statements. Ask teasing questions about what the user is doing to the hardware.",
+        "These categories are INFORMATIONAL and non-critical. The system is operating normally.",
+        "The tone must be smart, witty, and comedically varied (Deadpan, sarcasm, teasing).",
         "",
-        "HARD BANS — the `text` field MUST NOT contain any of the following, in any language:",
+        "CRITICAL COMEDIC RULE — AVOID MONOTONY:",
+        "- DO NOT make every response a question. That gets repetitive and annoying immediately.",
+        "- Mix structure: deliver 2-3 deadpan observations, 2 teasing questions, and 2 sarcastic one-liners.",
+        "- Vary sentence openings. Never start multiple lines with the exact same word or formula.",
+        "",
+        "HARD BANS — the `text` field MUST NOT contain:",
         "- Words/phrases: 'melting', 'burning', 'on fire', 'about to die', 'dying', 'doom', "
         "'panic', 'emergency', 'suffocating', 'drowning', 'exploding', 'explode', 'screaming', "
         "'begging for mercy', 'critical', 'shutting down', 'panic mode', 'melt', 'burn', 'fry', 'boiling'.",
         "- Death metaphors, body-part imagery, survival language, doom/panic framing.",
         "- Any phrasing that implies hardware damage, fire risk, or system failure.",
         "- Plain warnings or imperative commands (e.g. 'save your work NOW').",
-        "- ANTI-LAZINESS RULE: Do NOT use clichés like 'hacking NASA', 'cooking eggs', "
-        "'fork bombs', 'open 400 tabs', 'sunbathing', or 'getting cozy'. "
-        "Invent 100% original, fresh rhetorical questions natively in the target language!",
+        "- BANNED CLICHÉS: 'hacking NASA', 'cooking eggs', 'close some tabs', 'hand-warmer', 'sauna', "
+        "'Skynet', 'fork bombs', 'open 400 tabs', 'sunbathing', or 'getting cozy'.",
         "",
-        "CREATIVE QUESTION ANGLES (Frame your questions around these concepts):",
-        "- CPU: Ask if they are rendering whole universes, running infinite loops, or training massive AI models.",
-        "- RAM: Ask if they are hoarding tabs from 2020, feeding a memory buffet, or caching the entire internet.",
-        "- Temp: Ask if it's a winter hand-warmer, if the fans are prepping for airport flight, or if it booked a sauna.",
+        "THEMES TO PLAY WITH:",
+        "- CPU: The cores doing unpaid philosophical calculations, algorithmic chaos, taking clicks too personally.",
+        "- RAM: Digital hoarding, keeping data/tabs alive 'just in case', refusing to let go of history.",
+        "- Temp: Fans requesting airport clearance for takeoff, tropical micro-climates, pure passion computing.",
         "",
         "EMOTION GUIDANCE for cpu_alerts, ram_alerts, temp_alerts:",
         "Preferred: wink, thinking, suspicious, confused, listening, happy, focused.",
@@ -342,10 +363,9 @@ def _build_legacy_system_action_prompt() -> str:
         "",
         "RULES for cpu_alerts, ram_alerts, temp_alerts:",
         "- Generate exactly 7 unique responses per category.",
-        "- Every single one MUST end with a question mark ('؟' or '?').",
         "- Each response must be different from the others.",
         "- Each text under 12 words.",
-        "- Must be a funny/sarcastic question hinting at the workload.",
+        "- Mix questions, remarks, and one-liners naturally.",
         "",
         "### OUTPUT SCHEMA (RAW JSON ONLY)",
         NO_PREAMBLE,

@@ -182,7 +182,13 @@ PanelWindow {
                 isShown = false;
             } else {
                 isShown = true;
-                EventBus.emit(Events.LEFT_MENU_IS_OPENED, newIndex);
+                // الاسم الاعتمادي هو مرقّب Hyprland النشِط مباشرة —
+                // root.screen لا يُجسّد تغيير الشاشة النشطة ديناميكياً في Quickshell
+                let activeMonitorName = (typeof Hyprland !== "undefined" && Hyprland.focusedMonitor)
+                                        ? Hyprland.focusedMonitor.name
+                                        : (root.screen ? root.screen.name : "");
+                console.info("[LeftWindowFull] Emitting LEFT_MENU_IS_OPENED for active monitor:", activeMonitorName);
+                EventBus.emit(Events.LEFT_MENU_IS_OPENED, newIndex, activeMonitorName);
             }
         }, root);
     }
@@ -195,7 +201,11 @@ PanelWindow {
                 EventBus.emit(Events.LEFT_MENU_IS_CLOSED);
             } else {
                 isShown = true;
-                EventBus.emit(Events.LEFT_MENU_IS_OPENED, newIndex);
+                let activeMonitorName = (typeof Hyprland !== "undefined" && Hyprland.focusedMonitor)
+                                        ? Hyprland.focusedMonitor.name
+                                        : (root.screen ? root.screen.name : "");
+                console.info("[LeftWindowFull] Emitting LEFT_MENU_IS_OPENED for active monitor:", activeMonitorName);
+                EventBus.emit(Events.LEFT_MENU_IS_OPENED, newIndex, activeMonitorName);
             }
         }
     }

@@ -63,14 +63,31 @@ M3GroupBox {
         monitorProc.running = true;
     }
 
-    // تطبيق قاعدة monitor كاملة: name,res,pos,scale[,extra...]
-    function applyRule(name, res, pos, scale, extra) {
-        const parts = [name, res || "preferred", pos || "auto", String(scale ?? "auto")];
-        if (extra && extra !== "")
-            parts.push(extra);
-        const rule = parts.join(",");
-        console.info("[MonitorsSettings] monitor rule:", rule);
-        runCommand(["hyprctl", "keyword", "monitor", rule]);
+    // تطبيق قاعدة monitor كاملة عبر Lua: hl.monitor({...})
+    // (`hyprctl keyword monitor` is rejected on Hyprland >= 0.56.)
+    // transform/vrr/mirror are always sent explicitly so partial edits
+    // (resolution, scale, position) never reset rotation or VRR state.
+    function applyRule(name, res, pos, scale, transform, vrr, mirror) {
+        const mode = stripHz(res || "preferred") || "preferred";
+        const position = pos || "auto";
+        const scaleVal = String(scale ?? "").trim();
+        let lua = `hl.monitor({ output = "${name}"`;
+        lua += `, mode = "${mode}"`;
+        lua += `, position = "${position === "" ? "auto" : position}"`;
+        const scaleNum = Number(scaleVal);
+        if (scaleVal !== "" && scaleVal !== "auto" && !isNaN(scaleNum))
+            lua += `, scale = ${scaleNum}`;
+        const transformNum = Math.floor(Number(transform));
+        if (!isNaN(transformNum) && transformNum >= 0 && transformNum <= 7)
+            lua += `, transform = ${transformNum}`;
+        const vrrNum = Math.floor(Number(vrr));
+        if (!isNaN(vrrNum) && vrrNum >= -1 && vrrNum <= 3)
+            lua += `, vrr = ${vrrNum}`;
+        if (mirror && String(mirror).trim() !== "")
+            lua += `, mirror = "${String(mirror).trim()}"`;
+        lua += " })";
+        console.info("[MonitorsSettings] hl.monitor:", lua);
+        runCommand(["hyprctl", "eval", lua]);
     }
 
     // أمر مباشر (dispatch أو keyword)
@@ -108,7 +125,7 @@ M3GroupBox {
         }
 
         console.info(`[MonitorsSettings] place ${name} ${side} of ${ref.name} -> ${x}x${y}`);
-        applyRule(name, currentModeString(target), `${x}x${y}`, target.scale, "");
+        applyRule(name, currentModeString(target), `${x}x${y}`, target.scale, target.transform ?? 0, Number(target.vrr ?? 0), "");
     }
 
     // =========================================================
@@ -217,7 +234,7 @@ M3GroupBox {
                 allMonitors: root.monitors
                 selectedTheme: root.selectedTheme
 
-                onApplyRule: (name, res, pos, scale, extra) => root.applyRule(name, res, pos, scale, extra)
+                onApplyRule: (name, res, pos, scale, transform, vrr, mirror) => root.applyRule(name, res, pos, scale, transform, vrr, mirror)
                 onPlaceRelative: (name, side) => root.placeRelative(name, side)
                 onRunCommand: argv => root.runCommand(argv)
                 onRequestRefresh: root.refreshMonitors()

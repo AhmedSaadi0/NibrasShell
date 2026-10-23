@@ -3,7 +3,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Hyprland       // <-- 1. إضافة استيراد Hyprland لمتابعة الشاشة النشطة
+import Quickshell.Hyprland
 import QtQuick.Effects
 import Qt5Compat.GraphicalEffects
 
@@ -36,19 +36,15 @@ PanelWindow {
     property string currentOverlay: ""
     property bool depthEffectActive: false
     property bool blurEnabled: false
+    property bool _gapsApplied: false
 
     property int elementRadius: Theme.ThemeManager.selectedTheme.dimensions.elementRadius
     property int cornerRadius: elementRadius <= 1 ? 0 : elementRadius + 6
 
-    // ---------------------------------------------------------
-    // 2. التحقق مما إذا كانت هذه الشاشة هي الشاشة النشطة (التي يتواجد عليها الماوس)
-    // ---------------------------------------------------------
+    // التحقق مما إذا كانت هذه الشاشة هي الشاشة النشطة
     readonly property bool isFocusedMonitor: desktopRoot.screen && Hyprland.focusedMonitor && (desktopRoot.screen.name === Hyprland.focusedMonitor.name)
 
-    // ---------------------------------------------------------
-    // خصائص القطع الديناميكي السفلي (Dynamic Notch) - نصف دائرة
-    // ---------------------------------------------------------
-    // 3. تم إضافة "isFocusedMonitor" إلى الشرط لضمان تفعيل النوتش فقط في الشاشة النشطة
+    // تفعيل النوتش فقط في الشاشة النشطة
     readonly property bool notchVisible: App.showDock && !App.hasWindowsOnWorkspace && isFocusedMonitor
     readonly property real notchTargetHeight: App.dockIconSize + 48
     property real dockActualWidth: notchTargetHeight * 15
@@ -65,22 +61,15 @@ PanelWindow {
         }
     }
 
-    // ---------------------------------------------------------
-    // حاوية الورقة العائمة (تجمع الظل والمحتوى)
-    // ---------------------------------------------------------
     Item {
         id: sheetContainer
         anchors.fill: parent
 
-        // الهوامش التي تصنع شكل البارات
         anchors.topMargin: (Theme.ThemeManager.selectedTheme.dimensions.barHeight) + 3
         anchors.leftMargin: Theme.ThemeManager.selectedTheme.dimensions.leftBarWidth + 2
         anchors.rightMargin: 5
         anchors.bottomMargin: 5
 
-        // -----------------------------------------------------
-        // الإضافة الجديدة: تحريك الحاوية بالكامل لليمين
-        // -----------------------------------------------------
         transform: Translate {
             x: App.menuStyle !== C.FLOATING && desktopRoot.isMenuOpened ? Theme.ThemeManager.selectedTheme.dimensions.menuWidth + 5 : 0
 
@@ -93,7 +82,7 @@ PanelWindow {
             }
         }
 
-        // 1. طبقة الظل الخلفية (Shape مقطوع بنصف دائرة)
+        // 1. طبقة الظل الخلفية
         NotchShape {
             id: shadowRect
             anchors.fill: parent
@@ -101,12 +90,11 @@ PanelWindow {
             notchWidth: desktopRoot.notchWidth
             cornerRadius: desktopRoot.cornerRadius
 
-            // جعل اللون يطابق تماماً خلفية سطح المكتب لمنع تسرب اللون الأبيض عند الحواف
             fillColor: Theme.ThemeManager.selectedTheme.colors.surface
 
             layer.enabled: true
-            layer.smooth: true     // تفعيل التنعيم لنسيج الطبقة (Texture)
-            layer.samples: 4       // تنعيم حواف عالي الدقة (MSAA) يمنع التشوهات المنحنية
+            layer.smooth: true
+            // تم حذف layer.samples: 4 لتخفيف العبء على كرت إنتل
             layer.effect: MultiEffect {
                 shadowEnabled: true
                 shadowColor: Theme.ThemeManager.selectedTheme.colors.shadow.alpha(0.8)
@@ -136,14 +124,14 @@ PanelWindow {
             }
 
             layer.enabled: true
-            layer.smooth: true     // لضمان نعومة حواف الـ Wallpaper المعالجة بالقناع
-            layer.samples: 4       // منع بكسلة أطراف القناع الدائري
+            layer.smooth: true
+            // تم حذف layer.samples: 4 لتخفيف العبء على كرت إنتل
             layer.effect: OpacityMask {
                 maskSource: maskItem
             }
         }
 
-        // 3. عنصر القناع (Shape مقطوع ديناميكياً)
+        // 3. عنصر القناع
         Item {
             id: maskItem
             anchors.fill: parent
@@ -155,14 +143,11 @@ PanelWindow {
                 notchHeight: desktopRoot.notchHeight
                 notchWidth: desktopRoot.notchWidth
                 cornerRadius: desktopRoot.cornerRadius
-                fillColor: "white" // يترك أبيض ليعمل كقناع شفافية صحيح للـ OpacityMask
+                fillColor: "white"
             }
         }
     }
 
-    // ---------------------------------------------------------
-    // المنطق
-    // ---------------------------------------------------------
     function updateThemeData() {
         let clockSettings = Theme.ThemeManager.selectedTheme.desktopClock;
         let isDepth = (clockSettings?.enabled && clockSettings?.depthEffectEnabled) || false;
@@ -186,23 +171,33 @@ PanelWindow {
     }
 
     Component.onCompleted: {
+        // حصر التفاعل بالشاشة النشطة فقط بشكل قطعي ومستقل
         EventBus.on(Events.LEFT_MENU_IS_OPENED, () => {
+            let myScreenName = desktopRoot.screen ? desktopRoot.screen.name : "";
+
+            if (!desktopRoot.isFocusedMonitor) {
+                console.info("[Desktop]", myScreenName, "ignoring open event (not focused monitor).");
+                return;
+            }
+
+            console.info("[Desktop]", myScreenName, "is focused monitor -> opening menu state.");
             changeIsMenuOpen.newValue = true;
             changeIsMenuOpen.start();
         }, desktopRoot);
+
         EventBus.on(Events.LEFT_MENU_IS_CLOSED, () => {
-            changeIsMenuOpen.newValue = false;
-            changeIsMenuOpen.start();
+            if (desktopRoot.isMenuOpened) {
+                console.info("[Desktop]", desktopRoot.screen ? desktopRoot.screen.name : "", "resetting menu state.");
+                changeIsMenuOpen.newValue = false;
+                changeIsMenuOpen.start();
+            }
         }, desktopRoot);
 
         EventBus.on(Events.DOCK_WIDTH_CHANGED, w => {
             desktopRoot.dockActualWidth = w + 5;
         }, desktopRoot);
 
-        EventBus.on(Events.BOTTOM_LAUNCHER_OPENED, () => {
-        // TODO: -> Add configuration to App.qml to control the way this looks
-        // desktopRoot.launcherVisible = true;
-        }, desktopRoot);
+        EventBus.on(Events.BOTTOM_LAUNCHER_OPENED, () => {}, desktopRoot);
 
         EventBus.on(Events.BOTTOM_LAUNCHER_CLOSED, () => {
             desktopRoot.launcherVisible = false;
@@ -212,7 +207,6 @@ PanelWindow {
         wallpaper.wallpaperSource = Theme.ThemeManager.currentWallpaper;
     }
 
-    // تنظيف صريح عند تدمير النافذة (فصل الشاشة) لمنع المستمعات القديمة من إطلاق أخطاء
     Component.onDestruction: EventBus.clearOwner(desktopRoot)
 
     Timer {
@@ -222,12 +216,27 @@ PanelWindow {
         property bool newValue: false
         onTriggered: {
             desktopRoot.isMenuOpened = newValue;
-            if (App.menuStyle !== C.FLOATING)
-                addLeftSpace();
+            if (App.menuStyle !== C.FLOATING) {
+                if (newValue) {
+                    addLeftSpaceDelay.restart();
+                } else {
+                    addLeftSpace();
+                }
+            }
         }
     }
 
+    Timer {
+        id: addLeftSpaceDelay
+        interval: 340
+        repeat: false
+        onTriggered: addLeftSpace()
+    }
+
     function addLeftSpace() {
+        if (desktopRoot._gapsApplied === desktopRoot.isMenuOpened)
+            return;
+        desktopRoot._gapsApplied = desktopRoot.isMenuOpened;
         if (desktopRoot.isMenuOpened) {
             Theme.ThemeManager.addLeftMenuSpacing();
         } else {

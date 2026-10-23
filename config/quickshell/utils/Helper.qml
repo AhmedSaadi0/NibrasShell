@@ -20,8 +20,13 @@ Singleton {
      * @param {string} wallpaperName - The filename of the wallpaper (e.g., "my-wallpaper.jpg").
      * @returns {string[]} The command array to be executed.
      */
+    // NOTE: All command builders below return raw argv arrays executed DIRECTLY
+    // (Quickshell.execDetached / Process, no shell). Do NOT embed shell quoting
+    // (single/double quotes, backticks) or unexpanded `~`/globs in argv elements:
+    // they would be passed literally to the binary. Only builders that wrap
+    // their payload in ["sh", "-c", ...] may use shell syntax.
     function changeWallpaper(wallpaperPath) {
-        return ['swww', 'img', '--transition-type', 'grow', `'${wallpaperPath}'`];
+        return ['swww', 'img', '--transition-type', 'grow', wallpaperPath];
     }
 
     function getCursorpos(wallpaperPath) {
@@ -45,7 +50,7 @@ Singleton {
 
     function changePlasmaAccentColor(accentColor) {
         // This requires the 'plasma-apply-colorscheme' tool to be installed.
-        return ['plasma-apply-colorscheme', '-a', `"${accentColor}"`];
+        return ['plasma-apply-colorscheme', '-a', `${accentColor}`];
     }
 
     /**
@@ -223,7 +228,7 @@ inactiveForeground=${fgInactive}
         tone
     }) {
         const scriptCommand = Config.App.scripts.python.dynamicM3Command;
-        const command = [...scriptCommand, `'${selectedWallpaperPath}'`, "-m", themeMode, "--scheme", scheme, "--chroma", chroma, "--tone", tone];
+        const command = [...scriptCommand, `${selectedWallpaperPath}`, "-m", themeMode, "--scheme", scheme, "--chroma", chroma, "--tone", tone];
         console.info(command);
         return command;
     }
@@ -254,13 +259,13 @@ inactiveForeground=${fgInactive}
      * @returns {string[]} The command array.
      */
     function changeKonsoleProfile(profileName) {
-        return ['kwriteconfig5', '--file', 'konsolerc', '--group', "'Desktop Entry'", '--key', 'DefaultProfile', profileName];
+        return ['kwriteconfig5', '--file', 'konsolerc', '--group', 'Desktop Entry', '--key', 'DefaultProfile', profileName];
     }
 
     // Applies profile immediately to currently opened Konsole sessions via DBus.
     function applyKonsoleProfileToRunningSessions(profileName) {
         const scriptCommand = Config.App.scripts.python.applyKonsoleProfileOpenSessionsCommand;
-        return [...scriptCommand, "--profile", `'${profileName}'`];
+        return [...scriptCommand, "--profile", `${profileName}`];
     }
 
     // ==========================================================
@@ -284,12 +289,13 @@ inactiveForeground=${fgInactive}
     }
 
     function removeOldGtk4Theme() {
-        return ['find', '-P', '~/.config/gtk-4.0/', '-mindepth', '1', '!', '-name', '"settings.ini"', '-delete'];
+        // Shell-quoted on purpose: glob-free but keeps `~` expansion via sh.
+        return ['sh', '-c', 'find -P ~/.config/gtk-4.0/ -mindepth 1 ! -name \'settings.ini\' -delete'];
     }
 
     function changeGtk4Theme(themeName) {
-        // This command sets the theme for both GTK3 and GTK4 in most modern environments.
-        return ['cp', '-rf', `~/.themes/${themeName}/gtk-4.0/*`, '~/.config/gtk-4.0/'];
+        // Shell-quoted on purpose: needs `~` expansion and `*` glob expansion.
+        return ['sh', '-c', `cp -rf ~/.themes/'${themeName}'/gtk-4.0/* ~/.config/gtk-4.0/`];
     }
 
     /**
@@ -304,7 +310,7 @@ inactiveForeground=${fgInactive}
 
     function changeGtkFont(fontName, fontSize) {
         // This command sets the theme for both GTK3 and GTK4 in most modern environments.
-        return ['gsettings', 'set', 'org.gnome.desktop.interface', 'font-name', `'${fontName} ${fontSize}'`];
+        return ['gsettings', 'set', 'org.gnome.desktop.interface', 'font-name', `${fontName} ${fontSize}`];
     }
 
     function changeCursorTheme(themeName) {
@@ -376,23 +382,23 @@ inactiveForeground=${fgInactive}
         command.push('-a', `NibrasShell`);
 
         if (urgency) {
-            command.push('-u', `'${urgency}'`);
+            command.push('-u', `${urgency}`);
         }
         if (icon) {
-            command.push('-i', `'${icon}'`);
+            command.push('-i', `${icon}`);
         }
 
         // Add the main content (must be last)
-        command.push(`'${summary}'`); // Title
+        command.push(`${summary}`); // Title
         if (body) {
-            command.push(`'${body}'`); // Message body
+            command.push(`${body}`); // Message body
         }
 
         return command;
     }
 
     function playSoundCommand(soundPath) {
-        return ['paplay', `'${soundPath}'`];
+        return ['paplay', `${soundPath}`];
     }
 
     function createImageOverlayRembg({
@@ -438,7 +444,7 @@ inactiveForeground=${fgInactive}
         wallpaperPath
     }) {
         const scriptCommand = Config.App.scripts.python.opencvOverylayWallpaperCommand;
-        return [scriptCommand, `'${wallpaperPath}'`];
+        return [...scriptCommand, `${wallpaperPath}`];
     }
 
     function generateRandomString(length = 7) {
@@ -462,7 +468,7 @@ inactiveForeground=${fgInactive}
     }
 
     function copyFile(sourcePath, destinationPath) {
-        return ['cp', '-f', `'${sourcePath}'`, `'${destinationPath}'`];
+        return ['cp', '-f', `${sourcePath}`, `${destinationPath}`];
     }
 
     function listWifiCommand(wifiInterface = Config.App.networkMonitor) {

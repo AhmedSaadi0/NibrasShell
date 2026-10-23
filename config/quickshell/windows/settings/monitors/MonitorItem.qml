@@ -19,7 +19,7 @@ Rectangle {
     property var selectedTheme
 
     // إشارات تطبقها الصفحة الأم
-    signal applyRule(string name, string res, string pos, string scale, string extra)
+    signal applyRule(string name, string res, string pos, string scale, int transform, int vrr, string mirror)
     signal placeRelative(string name, string side)
     signal runCommand(var argv)
     signal requestRefresh
@@ -77,7 +77,39 @@ Rectangle {
         return `${monitor.x}x${monitor.y}`;
     }
     function applyWithExtra(extra) {
-        applyRule(monitor.name, baseRes(), basePos(), String(monitor.scale), extra || "");
+        // Legacy helper kept for compatibility: `extra` may be "mirror,NAME",
+        // "transform,N" or "vrr,N". Current transform/VRR combo state is always
+        // preserved unless the extra string overrides it.
+        let mirror = "";
+        let transform = selectedTransform();
+        let vrr = selectedVrr();
+        if (extra && extra !== "") {
+            const mirrorMatch = String(extra).match(/^mirror,(.+)$/);
+            const transformMatch = String(extra).match(/^transform,(\d+)$/);
+            const vrrMatch = String(extra).match(/^vrr,(-?\d+)$/);
+            if (mirrorMatch)
+                mirror = mirrorMatch[1].trim();
+            else if (transformMatch)
+                transform = parseInt(transformMatch[1], 10);
+            else if (vrrMatch)
+                vrr = parseInt(vrrMatch[1], 10);
+        }
+        applyRule(monitor.name, baseRes(), basePos(), String(monitor.scale), transform, vrr, mirror);
+    }
+
+    // Full-rule apply that always preserves the selected rotation + VRR state.
+    function applyCurrent(res, pos, scale, mirror) {
+        applyRule(monitor.name, res, pos, scale, selectedTransform(), selectedVrr(), mirror || "");
+    }
+
+    function selectedTransform() {
+        const vals = [0, 1, 2, 3];
+        return vals[transformCombo.currentIndex] ?? 0;
+    }
+
+    function selectedVrr() {
+        const vals = [0, 1, 2];
+        return vals[vrrCombo.currentIndex] ?? 0;
     }
 
     // بدء المرآة: نحفظ اللقطة أولاً ثم نطبق قاعدة مرآة بسيطة
@@ -88,16 +120,16 @@ Rectangle {
                 pos: basePos(),
                 scale: String(monitor.scale || 1)
             };
-        applyRule(monitor.name, "preferred", "auto", "auto", `mirror,${targetName}`);
+        applyCurrent("preferred", "auto", "auto", targetName);
     }
 
     // إلغاء المرآة: استعادة القاعدة المحفوظة (أو الحالية إن لم تتوفر لقطة)
     function unmirror() {
         if (preMirrorRule) {
-            applyRule(monitor.name, preMirrorRule.res, preMirrorRule.pos, preMirrorRule.scale, "");
+            applyCurrent(preMirrorRule.res, preMirrorRule.pos, preMirrorRule.scale, "");
             preMirrorRule = null;
         } else {
-            applyRule(monitor.name, baseRes(), basePos(), String(monitor.scale || 1), "");
+            applyCurrent(baseRes(), basePos(), String(monitor.scale || 1), "");
         }
     }
 
@@ -346,7 +378,7 @@ Rectangle {
                         if (root.blockUi)
                             return;
                         const mode = idx === 0 ? "preferred" : String(root.resolutionModes[idx]).replace(/Hz\s*$/i, "");
-                        root.applyRule(root.monitor.name, mode, root.basePos(), String(root.monitor.scale), "");
+                        root.applyCurrent(mode, root.basePos(), String(root.monitor.scale), "");
                     }
                 }
             }
@@ -369,7 +401,7 @@ Rectangle {
                         if (root.blockUi)
                             return;
                         const scales = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
-                        root.applyRule(root.monitor.name, root.baseRes(), root.basePos(), String(scales[idx]), "");
+                        root.applyCurrent(root.baseRes(), root.basePos(), String(scales[idx]), "");
                     }
                 }
             }
@@ -465,9 +497,9 @@ Rectangle {
                         return;
                     if (isChecked) {
                         // إعادة تفعيل بقاعدة كاملة
-                        root.applyRule(root.monitor.name, root.baseRes(), root.basePos(), String(root.monitor.scale || 1), "");
+                        root.applyCurrent(root.baseRes(), root.basePos(), String(root.monitor.scale || 1), "");
                     } else {
-                        root.runCommand(["hyprctl", "keyword", "monitor", `${root.monitor.name},disabled`]);
+                        root.runCommand(["hyprctl", "eval", `hl.monitor({ output = "${root.monitor.name}", disabled = true })`]);
                     }
                 }
             }
@@ -480,7 +512,7 @@ Rectangle {
                 onIsCheckedChanged: {
                     if (root.blockUi)
                         return;
-                    root.runCommand(["hyprctl", "dispatch", "dpms", isChecked ? "on" : "off", root.monitor.name]);
+                    root.runCommand(["hyprctl", "dispatch", `hl.dsp.dpms({ action = "${isChecked ? "on" : "off"}", monitor = "${root.monitor.name}" })`]);
                 }
             }
         }
@@ -554,7 +586,7 @@ Rectangle {
                         return;
                     const x = parseInt(text, 10);
                     if (!isNaN(x) && x !== Number(root.monitor.x))
-                        root.applyRule(root.monitor.name, root.baseRes(), `${x}x${root.monitor.y}`, String(root.monitor.scale), "");
+                        root.applyCurrent(root.baseRes(), `${x}x${root.monitor.y}`, String(root.monitor.scale), "");
                 }
             }
 
@@ -577,7 +609,7 @@ Rectangle {
                         return;
                     const y = parseInt(text, 10);
                     if (!isNaN(y) && y !== Number(root.monitor.y))
-                        root.applyRule(root.monitor.name, root.baseRes(), `${root.monitor.x}x${y}`, String(root.monitor.scale), "");
+                        root.applyCurrent(root.baseRes(), `${root.monitor.x}x${y}`, String(root.monitor.scale), "");
                 }
             }
         }
@@ -596,7 +628,7 @@ Rectangle {
                 normalBackground: selectedTheme.colors.primaryContainer
                 normalForeground: selectedTheme.colors.onPrimaryContainer
                 enabled: !isDisabled
-                onClicked: root.runCommand(["hyprctl", "dispatch", "focusmonitor", root.monitor.name])
+                onClicked: root.runCommand(["hyprctl", "dispatch", `hl.dsp.focus({ monitor = "${root.monitor.name}" })`])
             }
 
             Item {

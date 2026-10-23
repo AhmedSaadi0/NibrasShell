@@ -268,7 +268,7 @@ Item {
                     onClicked: {
                         root.currentAccentColor = accentColor;
                         root.currentAccentForeground = theme.colors.onPrimary;
-                        root.pendingActionCommand = ["hyprctl", "dispatch", "exit"];
+                        root.pendingActionCommand = ["hyprctl", "dispatch", "hl.dsp.exit()"];
                         root.pendingActionMessage = qsTr("Exit Session?");
                         root.confirmActionText = qsTr("Log Out");
                         viewStack.push(confirmActions);

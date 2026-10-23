@@ -14,15 +14,15 @@ Transition {
                 property: "y"
                 from: parent.height
                 to: 0
-                duration: 350
-                easing.type: Easing.OutCubic
+                duration: 280
+                easing.type: Easing.OutQuart
             }
             // اجعل العنصر يظهر تدريجيًا
             NumberAnimation {
                 property: "opacity"
                 from: 0
                 to: 1
-                duration: 300 // أقصر قليلاً لإنهاء التلاشي قبل نهاية الحركة
+                duration: 250
                 easing.type: Easing.OutQuad
             }
         }

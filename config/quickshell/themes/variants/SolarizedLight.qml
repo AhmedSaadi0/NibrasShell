@@ -12,43 +12,45 @@ BaseTheme {
 
     _wallpaper: App.assets.getWallpaperPath("solarized-light.png")
 
-    _primary: "#268bd2"             // Blue
-    _onPrimary: "#fdf6e3"           // base3
-    _secondary: "#859900"           // Green
-    _onSecondary: "#fdf6e3"
-    _tertiary: "#d33682"            // Magenta
-    _onTertiary: "#fdf6e3"
-    _error: "#dc322f"               // Red
-    _onError: "#fdf6e3"
+    _primary: Qt.rgba(0.14901961386203766, 0.545098066329956, 0.8235294222831726, 1)             // Blue
+    _onPrimary: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)           // base3
+    _secondary: Qt.rgba(0.5215686559677124, 0.6000000238418579, 0, 1)           // Green
+    _onSecondary: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)
+    _tertiary: Qt.rgba(0.8274509906768799, 0.21176470816135406, 0.5098039507865906, 1)            // Magenta
+    _onTertiary: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)
+    _error: Qt.rgba(0.8627451062202454, 0.19607843458652496, 0.18431372940540314, 1)               // Red
+    _onError: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)
 
-    _surface: "#fdf6e3"                        // base3
-    _onSurface: "#657b83"                      // base00
-    _surfaceDim: "#eee8d5"                     // base2
-    _surfaceBright: "#fdf6e3"
-    _surfaceContainerLowest: "#ffffff"
-    _surfaceContainerLow: "#fef9ec"
-    _surfaceContainer: "#fdf6e3"               // base3
-    _surfaceContainerHigh: "#eee8d5"           // base2
-    _surfaceContainerHighest: "#d3cbb7"
-    _surfaceVariant: "#eee8d5"
-    _onSurfaceVariant: "#586e75"               // base01
+    _surface: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)                        // base3
+    _onSurface: Qt.rgba(0.3960784375667572, 0.48235294222831726, 0.5137255191802979, 1)                      // base00
+    _surfaceDim: Qt.rgba(0.9333333373069763, 0.9098039269447327, 0.8352941274642944, 1)                     // base2
+    _surfaceBright: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)
+    _surfaceContainerLowest: Qt.rgba(1, 1, 1, 1)
+    _surfaceContainerLow: Qt.rgba(0.9960784316062927, 0.9764705896377563, 0.9254902005195618, 1)
+    _surfaceContainer: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)               // base3
+    _surfaceContainerHigh: Qt.rgba(0.9333333373069763, 0.9098039269447327, 0.8352941274642944, 1)           // base2
+    _surfaceContainerHighest: Qt.rgba(0.8274509906768799, 0.7960784435272217, 0.7176470756530762, 1)
+    _surfaceVariant: Qt.rgba(0.9333333373069763, 0.9098039269447327, 0.8352941274642944, 1)
+    _onSurfaceVariant: Qt.rgba(0.3450980484485626, 0.4313725531101227, 0.4588235318660736, 1)               // base01
 
-    _primaryContainer: "#d1e6f5"               // Light Blue container
-    _onPrimaryContainer: "#1a6090"
-    _secondaryContainer: "#e0e9c8"             // Light Green container
-    _onSecondaryContainer: "#5a6b00"
-    _tertiaryContainer: "#f0d6e3"              // Light Magenta container
-    _onTertiaryContainer: "#8a2a5a"
-    _errorContainer: "#f5d6d6"                 // Light Red container
-    _onErrorContainer: "#a31e1e"
+    _primaryContainer: Qt.rgba(0.8196078538894653, 0.9019607901573181, 0.9607843160629272, 1)               // Light Blue container
+    _onPrimaryContainer: Qt.rgba(0.10196078568696976, 0.3764705955982208, 0.5647059082984924, 1)
+    _secondaryContainer: Qt.rgba(0.8784313797950745, 0.9137254953384399, 0.7843137383460999, 1)             // Light Green container
+    _onSecondaryContainer: Qt.rgba(0.3529411852359772, 0.41960784792900085, 0, 1)
+    _tertiaryContainer: Qt.rgba(0.9411764740943909, 0.8392156958580017, 0.8901960849761963, 1)              // Light Magenta container
+    _onTertiaryContainer: Qt.rgba(0.5411764979362488, 0.16470588743686676, 0.3529411852359772, 1)
+    _errorContainer: Qt.rgba(0.9607843160629272, 0.8392156958580017, 0.8392156958580017, 1)                 // Light Red container
+    _onErrorContainer: Qt.rgba(0.6392157077789307, 0.11764705926179886, 0.11764705926179886, 1)
 
-    _outline: "#93a1a1"                        // base1
-    _outlineVariant: "#eee8d5"                 // base2
-    _inverseSurface: "#002b36"                 // base03
-    _onInverseSurface: "#fdf6e3"
-    _inversePrimary: "#268bd2"
-    _shadow: "#000000"
-    _scrim: "#000000"
+    _outline: Qt.rgba(0.5764706134796143, 0.6313725709915161, 0.6313725709915161, 1)                        // base1
+    _outlineVariant: Qt.rgba(0.9333333373069763, 0.9098039269447327, 0.8352941274642944, 1)                 // base2
+    _inverseSurface: Qt.rgba(0, 0.16862745583057404, 0.21176470816135406, 1)                 // base03
+    _onInverseSurface: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)
+    _inversePrimary: Qt.rgba(0.14901961386203766, 0.545098066329956, 0.8235294222831726, 1)
+    _shadow: Qt.rgba(0, 0, 0, 1)
+    _scrim: Qt.rgba(0, 0, 0, 1)
+    _hyprDropShadow: "yes"
+    _hyprShadowColor: Qt.rgba(0.05098039284348488, 0.05098039284348488, 0.05098039284348488, 0.20000000298023224)
 
     _plasmaColorScheme: "NibrasSolarizedLight"
     _konsoleProfile: "SolarizedLight.profile"
@@ -56,4 +58,6 @@ BaseTheme {
     _themeIcons: "Papirus-Light"
     _gtkTheme: "Breeze"
     _kvantumTheme: "KvArc"
+    _desktopClockPosition: Qt.point(1182.58984375, 329.7421875)
+    _desktopClockSize: Qt.size(612.28125, 338.60546875)
 }

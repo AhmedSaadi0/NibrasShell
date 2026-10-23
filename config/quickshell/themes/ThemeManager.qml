@@ -361,11 +361,11 @@ Singleton {
             try {
                 let txt = fileSessionReader.text();
                 let session = JSON.parse(txt);
-                let target = session.activeThemeName || "ColorsTheme";
+                let target = session.activeThemeName || "DeerTheme";
                 requestLoadTheme(target);
             } catch (e) {
                 console.warn("[ThemeManager] Session missing or invalid. Loading default.");
-                requestLoadTheme("ColorsTheme");
+                requestLoadTheme("DeerTheme");
             }
         }
     }

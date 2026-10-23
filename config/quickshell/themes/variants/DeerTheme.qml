@@ -19,46 +19,48 @@ BaseTheme {
     _desktopClockSize: Qt.size(1848.86328125, 612.8984375)
     _desktopClockShadowEnabled: false
     _desktopClockUseThemeColor: false
-    _desktopClockColor: Qt.rgba(0.05, 0.08, 0.13, 0.8)
+    _desktopClockColor: Qt.rgba(0.050003815442323685, 0.0800030529499054, 0.13000686466693878, 0.800000011920929)
 
-    _primary: "#B38BFF"
-    _onPrimary: "#120A2A"
-    _secondary: "#E68A5C"
-    _onSecondary: "#1A0F0A"
-    _tertiary: "#8DE8FF"
-    _onTertiary: "#0A1D27"
-    _error: "#ff8f9e"
-    _onError: "#0A1D27"
+    _primary: Qt.rgba(0.7019608020782471, 0.545098066329956, 1, 1)
+    _onPrimary: Qt.rgba(0.07058823853731155, 0.03921568766236305, 0.16470588743686676, 1)
+    _secondary: Qt.rgba(0.9019607901573181, 0.5411764979362488, 0.3607843220233917, 1)
+    _onSecondary: Qt.rgba(0.10196078568696976, 0.05882352963089943, 0.03921568766236305, 1)
+    _tertiary: Qt.rgba(0.5529412031173706, 0.9098039269447327, 1, 1)
+    _onTertiary: Qt.rgba(0.03921568766236305, 0.11372549086809158, 0.15294118225574493, 1)
+    _error: Qt.rgba(1, 0.5607843399047852, 0.6196078658103943, 1)
+    _onError: Qt.rgba(0.03921568766236305, 0.11372549086809158, 0.15294118225574493, 1)
 
-    _surface: "#0A1D27"
-    _onSurface: "#FFFFFF"
-    _surfaceDim: "#061520"
-    _surfaceBright: "#142A3C"
-    _surfaceContainerLowest: "#050F17"
-    _surfaceContainerLow: "#0C2030"
-    _surfaceContainer: "#0E2435"
-    _surfaceContainerHigh: "#142A3C"
-    _surfaceContainerHighest: "#1E3A5A"
-    _surfaceVariant: "#142A3C"
-    _onSurfaceVariant: "#B0C4DE"
+    _surface: Qt.rgba(0.03921568766236305, 0.11372549086809158, 0.15294118225574493, 1)
+    _onSurface: Qt.rgba(1, 1, 1, 1)
+    _surfaceDim: Qt.rgba(0.0235294122248888, 0.08235294371843338, 0.125490203499794, 1)
+    _surfaceBright: Qt.rgba(0.0784313753247261, 0.16470588743686676, 0.23529411852359772, 1)
+    _surfaceContainerLowest: Qt.rgba(0.019607843831181526, 0.05882352963089943, 0.09019608050584793, 1)
+    _surfaceContainerLow: Qt.rgba(0.0470588244497776, 0.125490203499794, 0.1882352977991104, 1)
+    _surfaceContainer: Qt.rgba(0.054901961237192154, 0.1411764770746231, 0.2078431397676468, 1)
+    _surfaceContainerHigh: Qt.rgba(0.0784313753247261, 0.16470588743686676, 0.23529411852359772, 1)
+    _surfaceContainerHighest: Qt.rgba(0.11764705926179886, 0.22745098173618317, 0.3529411852359772, 1)
+    _surfaceVariant: Qt.rgba(0.0784313753247261, 0.16470588743686676, 0.23529411852359772, 1)
+    _onSurfaceVariant: Qt.rgba(0.6901960968971252, 0.7686274647712708, 0.8705882430076599, 1)
 
     // تدرجات الألوان للحاويات من أجل إبراز المظهر الداكن الغني باللون الكحلي/البنفسجي
-    _primaryContainer: "#2e1b4d"             // Subtle Dark Purple container
-    _onPrimaryContainer: "#B38BFF"
-    _secondaryContainer: "#3d1a0a"           // Subtle Dark Orange container
-    _onSecondaryContainer: "#E68A5C"
-    _tertiaryContainer: "#0e2a36"            // Subtle Dark Cyan container
-    _onTertiaryContainer: "#8DE8FF"
-    _errorContainer: "#3a151b"
-    _onErrorContainer: "#ff8f9e"
+    _primaryContainer: Qt.rgba(0.18039216101169586, 0.10588235408067703, 0.3019607961177826, 1)             // Subtle Dark Purple container
+    _onPrimaryContainer: Qt.rgba(0.7019608020782471, 0.545098066329956, 1, 1)
+    _secondaryContainer: Qt.rgba(0.239215686917305, 0.10196078568696976, 0.03921568766236305, 1)           // Subtle Dark Orange container
+    _onSecondaryContainer: Qt.rgba(0.9019607901573181, 0.5411764979362488, 0.3607843220233917, 1)
+    _tertiaryContainer: Qt.rgba(0.054901961237192154, 0.16470588743686676, 0.21176470816135406, 1)            // Subtle Dark Cyan container
+    _onTertiaryContainer: Qt.rgba(0.5529412031173706, 0.9098039269447327, 1, 1)
+    _errorContainer: Qt.rgba(0.22745098173618317, 0.08235294371843338, 0.10588235408067703, 1)
+    _onErrorContainer: Qt.rgba(1, 0.5607843399047852, 0.6196078658103943, 1)
 
-    _outline: "#3A5A7A"
-    _outlineVariant: "#1E3A5A"
-    _inverseSurface: "#FFFFFF"
-    _onInverseSurface: "#0A1D27"
-    _inversePrimary: "#B38BFF"
-    _shadow: "#121212"
-    _scrim: "#000000"
+    _outline: Qt.rgba(0.22745098173618317, 0.3529411852359772, 0.47843137383461, 1)
+    _outlineVariant: Qt.rgba(0.11764705926179886, 0.22745098173618317, 0.3529411852359772, 1)
+    _inverseSurface: Qt.rgba(1, 1, 1, 1)
+    _onInverseSurface: Qt.rgba(0.03921568766236305, 0.11372549086809158, 0.15294118225574493, 1)
+    _inversePrimary: Qt.rgba(0.7019608020782471, 0.545098066329956, 1, 1)
+    _shadow: Qt.rgba(0.07058823853731155, 0.07058823853731155, 0.07058823853731155, 1)
+    _scrim: Qt.rgba(0, 0, 0, 1)
+    _hyprDropShadow: "yes"
+    _hyprShadowColor: Qt.rgba(0.05098039284348488, 0.05098039284348488, 0.05098039284348488, 0.20000000298023224)
 
     _plasmaColorScheme: "BlueDeer"
     _konsoleProfile: "game.profile"

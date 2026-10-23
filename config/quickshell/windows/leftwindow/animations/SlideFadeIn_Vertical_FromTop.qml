@@ -20,16 +20,15 @@ Transition {
                 property: "y"
                 from: -parent.height / 3
                 to: 0
-                duration: 350
-                // استخدم Easing مناسب للدخول (يبدأ سريعًا ويتباطأ)
-                easing.type: Easing.OutCubic
+                duration: 280
+                easing.type: Easing.OutQuart
             }
             // 2. اجعل العنصر يظهر تدريجيًا أثناء حركته
             NumberAnimation {
                 property: "opacity"
                 from: 0
                 to: 1
-                duration: 350
+                duration: 280
                 easing.type: Easing.OutQuad
             }
         }

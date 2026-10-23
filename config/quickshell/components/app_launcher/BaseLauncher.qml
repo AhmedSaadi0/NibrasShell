@@ -125,7 +125,7 @@ Item {
     function launchApp(command, workingDirectory, environment) {
         if (command) {
             clearSearchText.stop();
-            // Quickshell.execDetached يمرر command إلى sh -c داخلياً.
+            // Quickshell.execDetached passes argv VERBATIM (no shell).
             // لا تدعم كل الإصدارات environment property، لذا نمرر اللوكال
             // عبر prefix يُفسَّره sh مباشرة (مضمون على كل الإصدارات).
             // نمرر كقائمة ["sh", "-c", finalCommand] لتجنب أي غموض في تفسير execDetached.
@@ -139,10 +139,12 @@ Item {
             console.info("[Locale][BaseLauncher.launchApp] finalCommand:", JSON.stringify(finalCommand));
             console.info("[Locale][BaseLauncher.launchApp] workingDirectory:", JSON.stringify(workingDirectory));
             console.info("[Locale][BaseLauncher.launchApp] env applied:", !!environment);
-            Quickshell.execDetached({
-                command: ["sh", "-c", finalCommand],
-                workingDirectory: workingDirectory
-            });
+            // NOTE: list form — {command:[...]} throws TypeError on QS 0.3.0,
+            // so workingDirectory is folded into the sh -c script.
+            let cdPrefix = "";
+            if (workingDirectory)
+                cdPrefix = "cd '" + String(workingDirectory).replace(/'/g, "'\\''") + "' && ";
+            Quickshell.execDetached(["sh", "-c", cdPrefix + finalCommand]);
             clearSearchText.start();
             if (onAppLaunchedCallback) {
                 onAppLaunchedCallback();

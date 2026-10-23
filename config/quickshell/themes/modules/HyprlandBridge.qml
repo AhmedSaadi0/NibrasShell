@@ -1,116 +1,307 @@
 import QtQuick
-import Quickshell.Hyprland
+import Quickshell
 import "root:/config"
-import "root:/config/ConstValues.js" as C
 
 QtObject {
     id: root
 
-    function _toHyprBool(value) {
-        return value === true || value === "yes" || value === 1 ? "yes" : "no";
+    function _evalLua(luaCode) {
+        if (!luaCode || luaCode.trim() === "")
+            return;
+        console.info("[HyprlandBridge] [Lua Eval Batch] ->\n" + luaCode);
+        Quickshell.execDetached(["hyprctl", "eval", luaCode]);
     }
 
-    function _formatVec2(value) {
-        if (value === undefined || value === null)
+    function _execCmd(cmdArray) {
+        if (!Array.isArray(cmdArray) || cmdArray.length === 0)
+            return;
+        console.info("[HyprlandBridge] [Exec] -> " + cmdArray.join(" "));
+        Quickshell.execDetached(["sh", "-c", cmdArray.join(" ")]);
+    }
+
+    function _cleanStr(val) {
+        if (!val)
             return "";
+        let s = String(val).trim();
+        if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
+            s = s.substring(1, s.length - 1);
+        }
+        return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    }
 
-        if (typeof value === "string")
-            return value.trim();
+    function _gapsToLua(val) {
+        if (val === undefined || val === null)
+            return "0";
+        if (typeof val === "number")
+            return val.toString();
 
-        if (value.x !== undefined && value.y !== undefined)
-            return `${Number(value.x)}, ${Number(value.y)}`;
+        let str = String(val).replace(/['"]/g, "").trim();
+        let parts = str.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
 
-        return String(value).trim();
+        if (parts.length === 4) {
+            return `{ top = ${parts[0]}, right = ${parts[1]}, bottom = ${parts[2]}, left = ${parts[3]} }`;
+        } else if (parts.length === 1) {
+            return parts[0].toString();
+        } else if (parts.length > 0) {
+            return `{ top = ${parts[0]}, right = ${parts[1] || parts[0]}, bottom = ${parts[2] || parts[0]}, left = ${parts[3] || parts[1] || parts[0]} }`;
+        }
+        return "0";
+    }
+
+    function _formatVec2ToLua(value) {
+        if (value === undefined || value === null)
+            return "{0, 0}";
+
+        if (typeof value === "string") {
+            let parts = value.replace(/['"]/g, "").split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+            if (parts.length >= 2)
+                return `{${parts[0]}, ${parts[1]}}`;
+            return "{0, 0}";
+        }
+
+        if (value.x !== undefined && value.y !== undefined) {
+            return `{${Number(value.x)}, ${Number(value.y)}}`;
+        }
+        return "{0, 0}";
+    }
+
+    function _parseBezierToLua(bezierStr) {
+        if (!bezierStr)
+            return [];
+        let lines = String(bezierStr).split('\n').map(l => l.replace(/['"]/g, "").trim()).filter(l => l.length > 0);
+        let results = [];
+        for (let line of lines) {
+            let parts = line.split(',').map(s => s.trim());
+            if (parts.length >= 5) {
+                let name = parts[0];
+                let x0 = parseFloat(parts[1]);
+                let y0 = parseFloat(parts[2]);
+                let x1 = parseFloat(parts[3]);
+                let y1 = parseFloat(parts[4]);
+                if (!isNaN(x0) && !isNaN(y0) && !isNaN(x1) && !isNaN(y1)) {
+                    results.push(`hl.curve("${name}", { type = "bezier", points = {{${x0}, ${y0}}, {${x1}, ${y1}}} })`);
+                }
+            }
+        }
+        return results;
+    }
+
+    // QML color object / {r,g,b,a} (0..1) -> "rgba(RRGGBBAA)". Strings pass through.
+    function _colorToRgba(val) {
+        if (val === undefined || val === null)
+            return null;
+        if (typeof val === "string") {
+            let s = val.trim();
+            return s === "" ? null : s;
+        }
+        if (typeof val === "object" && val.r !== undefined) {
+            const toHex = n => Math.round(Math.max(0, Math.min(1, Number(n))) * 255).toString(16).padStart(2, "0");
+            const a = (val.a === undefined) ? 1 : Number(val.a);
+            return `rgba(${toHex(val.r)}${toHex(val.g)}${toHex(val.b)}${toHex(isNaN(a) ? 1 : a)})`;
+        }
+        return null;
+    }
+
+    // "rgba(a) rgba(b) 45deg" -> '{ colors = {"rgba(a)", "rgba(b)"}, angle = 45 }'
+    // single color (string or color object) -> '"..."'
+    function _borderToLua(val) {
+        let s = _colorToRgba(val);
+        if (!s)
+            return '"rgba(50505088)"';
+        // strip wrapping quotes if a quoted string slipped through
+        if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"')))
+            s = s.substring(1, s.length - 1);
+        const tokens = s.split(/\s+/).filter(t => t.length > 0);
+        if (tokens.length <= 1)
+            return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+        let angle = 45;
+        let colors = tokens.slice();
+        const m = tokens[tokens.length - 1].match(/^(\d+(?:\.\d+)?)deg$/);
+        if (m) {
+            angle = Number(m[1]);
+            colors = tokens.slice(0, -1);
+        }
+        if (colors.length <= 1)
+            return `"${colors[0].replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+        return `{ colors = {${colors.map(c => `"${c.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(", ")}}, angle = ${angle} }`;
+    }
+
+    function _parseAnimationToLua(name, animValue) {
+        if (!animValue)
+            return null;
+        let cleanVal = String(animValue).replace(/['"]/g, "").trim();
+        let parts = cleanVal.split(',').map(s => s.trim());
+        if (parts.length >= 3) {
+            let enabled = (parts[0] === "1" || parts[0] === "true" || parts[0] === "yes");
+            let speed = parseFloat(parts[1]) || 1;
+            let curve = parts[2] || "default";
+            let style = parts.slice(3).join(', ').trim();
+            let styleAttr = style ? `, style = "${style}"` : "";
+            // NOTE: the key MUST be `bezier` — Hyprland rejects `curve`
+            // ("bezier or spring is required").
+            return `hl.animation({ leaf = "${name}", enabled = ${enabled}, speed = ${speed}, bezier = "${curve}"${styleAttr} })`;
+        }
+        return null;
     }
 
     function applyConfig(hyprConfig) {
         if (!hyprConfig)
             return;
 
-        console.info("[HyprlandBridge] HyprlandBridge: Dispatching configuration...");
+        console.info("[HyprlandBridge] Applying configuration and animations to Hyprland...");
 
-        // دالة مساعدة داخلية للتنفيذ
-        const dispatch = (cmd, val) => {
-            let valueStr = String(val).trim();
-            // وضع علامات تنصيص إذا كانت القيمة تحتوي مسافات أو فواصل (مثل الألوان المتدرجة)
-            if (valueStr.includes(' ') || valueStr.includes(',')) {
-                valueStr = `'${valueStr}'`;
-            }
-            Hyprland.dispatch(`exec hyprctl keyword ${cmd} ${valueStr}`);
-        };
+        // 1. General Settings (quickshell theme values are canonical —
+        // always include gaps_out; runtime hl.config MERGES sections)
+        let generalFields = [];
+        if (hyprConfig.gapsIn !== undefined)
+            generalFields.push(`gaps_in = ${Number(hyprConfig.gapsIn)}`);
+        if (hyprConfig.gapsOut !== undefined)
+            generalFields.push(`gaps_out = ${_gapsToLua(hyprConfig.gapsOut)}`);
+        if (hyprConfig.borderWidth !== undefined)
+            generalFields.push(`border_size = ${Number(hyprConfig.borderWidth)}`);
+        // NOTE: nested `col` table is required — flat ["col.x"] keys reject
+        // gradients ("invalid color"), and gradients need colors/angle tables.
+        let colFields = [];
+        if (hyprConfig.activeBorder)
+            colFields.push(`active_border = ${_borderToLua(hyprConfig.activeBorder)}`);
+        if (hyprConfig.inactiveBorder)
+            colFields.push(`inactive_border = ${_borderToLua(hyprConfig.inactiveBorder)}`);
+        if (colFields.length > 0)
+            generalFields.push(`col = { ${colFields.join(", ")} }`);
+        if (hyprConfig.layout)
+            generalFields.push(`layout = "${_cleanStr(hyprConfig.layout)}"`);
 
-        // --- General ---
-        dispatch('general:gaps_in', hyprConfig.gapsIn);
-        if (App.menuStyle == C.FLOATING) {
-            dispatch('general:gaps_out', hyprConfig.gapsOut);
+        // 2. Decoration Settings
+        let decorFields = [];
+        if (hyprConfig.rounding !== undefined)
+            decorFields.push(`rounding = ${Number(hyprConfig.rounding)}`);
+        if (hyprConfig.dimInactive !== undefined)
+            decorFields.push(`dim_inactive = ${hyprConfig.dimInactive ? "true" : "false"}`);
+        if (hyprConfig.dimStrength !== undefined)
+            decorFields.push(`dim_strength = ${Number(hyprConfig.dimStrength)}`);
+
+        // Shadows
+        let shadowFields = [];
+        if (hyprConfig.dropShadow !== undefined) {
+            let shadowEnabled = (hyprConfig.dropShadow === true || hyprConfig.dropShadow === "yes" || hyprConfig.dropShadow === 1);
+            shadowFields.push(`enabled = ${shadowEnabled ? "true" : "false"}`);
         }
-        dispatch('general:border_size', hyprConfig.borderWidth);
-        dispatch('general:col.active_border', hyprConfig.activeBorder);
-        dispatch('general:col.inactive_border', hyprConfig.inactiveBorder);
-        dispatch('general:layout', hyprConfig.layout);
-
-        // --- Decoration ---
-        dispatch('decoration:rounding', hyprConfig.rounding);
-        dispatch('decoration:dim_inactive', hyprConfig.dimInactive ? "yes" : "no");
-        dispatch('decoration:dim_strength', hyprConfig.dimStrength);
-
-        // Shadow
-        dispatch('decoration:shadow:enabled', _toHyprBool(hyprConfig.dropShadow));
-        dispatch('decoration:shadow:range', hyprConfig.shadowRange);
-        if (hyprConfig.shadowColor)
-            dispatch('decoration:shadow:color', hyprConfig.shadowColor);
-        const shadowOffset = _formatVec2(hyprConfig.shadowOffset);
-        if (shadowOffset)
-            dispatch('decoration:shadow:offset', shadowOffset);
+        if (hyprConfig.shadowRange !== undefined)
+            shadowFields.push(`range = ${Number(hyprConfig.shadowRange)}`);
+        if (hyprConfig.shadowColor) {
+            let sc = _colorToRgba(hyprConfig.shadowColor);
+            if (sc)
+                shadowFields.push(`color = "${_cleanStr(sc)}"`);
+        }
+        if (hyprConfig.shadowOffset !== undefined)
+            shadowFields.push(`offset = ${_formatVec2ToLua(hyprConfig.shadowOffset)}`);
+        if (shadowFields.length > 0)
+            decorFields.push(`shadow = { ${shadowFields.join(", ")} }`);
 
         // Blur
-        dispatch('decoration:blur:enabled', hyprConfig.blurEnabled ? "yes" : "no");
-        dispatch('decoration:blur:size', hyprConfig.blurSize);
-        dispatch('decoration:blur:passes', hyprConfig.blurPasses);
+        let blurFields = [];
+        if (hyprConfig.blurEnabled !== undefined)
+            blurFields.push(`enabled = ${hyprConfig.blurEnabled ? "true" : "false"}`);
+        if (hyprConfig.blurSize !== undefined)
+            blurFields.push(`size = ${Number(hyprConfig.blurSize)}`);
+        if (hyprConfig.blurPasses !== undefined)
+            blurFields.push(`passes = ${Number(hyprConfig.blurPasses)}`);
+        if (blurFields.length > 0)
+            decorFields.push(`blur = { ${blurFields.join(", ")} }`);
 
-        // --- Animations ---
-        dispatch('animations:enabled', hyprConfig.animationsEnabled ? "yes" : "no");
+        // Animations Toggle
+        let animFields = [];
+        if (hyprConfig.animationsEnabled !== undefined)
+            animFields.push(`enabled = ${hyprConfig.animationsEnabled ? "true" : "false"}`);
 
-        // معالجة Bezier
-        if (hyprConfig.bezier) {
-            dispatch('animations:bezier', hyprConfig.bezier.trim());
+        let configSections = [];
+        if (generalFields.length > 0)
+            configSections.push(`general = { ${generalFields.join(", ")} }`);
+        if (decorFields.length > 0)
+            configSections.push(`decoration = { ${decorFields.join(", ")} }`);
+        if (animFields.length > 0)
+            configSections.push(`animations = { ${animFields.join(", ")} }`);
+
+        // Config first, as its own eval (merge semantics: partial sections safe).
+        if (configSections.length > 0) {
+            _evalLua(`hl.config({ ${configSections.join(", ")} })`);
         }
 
-        const animationEntries = [{
+        // 3. Curves first — each as its own eval so one bad line can't abort
+        // later statements (a Lua runtime error stops the rest of the string).
+        let definedCurves = {};
+        if (hyprConfig.bezier) {
+            let curves = _parseBezierToLua(hyprConfig.bezier);
+            for (let curveLua of curves) {
+                const m = curveLua.match(/^hl\.curve\("([^"]+)"/);
+                if (m)
+                    definedCurves[m[1]] = true;
+                _evalLua(curveLua);
+            }
+        }
+
+        // 4. تطبيق الحركات بعد تعريف المنحنيات مباشرة (Animations)
+        const animationEntries = [
+            {
                 name: "windowsMove",
                 value: hyprConfig.animWindowsMove
-            }, {
+            },
+            {
                 name: "windows",
                 value: hyprConfig.animWindows
-            }, {
+            },
+            {
+                name: "windowsIn",
+                value: hyprConfig.animWindowsIn
+            },
+            {
                 name: "windowsOut",
                 value: hyprConfig.animWindowsOut
-            }, {
+            },
+            {
                 name: "border",
                 value: hyprConfig.animBorder
-            }, {
+            },
+            {
                 name: "borderangle",
                 value: hyprConfig.animBorderAngle
-            }, {
+            },
+            {
                 name: "fadeIn",
                 value: hyprConfig.animFadeIn
-            }, {
+            },
+            {
                 name: "fadeOut",
                 value: hyprConfig.animFadeOut
-            }, {
+            },
+            {
                 name: "workspaces",
                 value: hyprConfig.animWorkspaces
-            }];
+            }
+        ];
 
         for (const entry of animationEntries) {
-            if (entry.value)
-                dispatch('animations:animation', `${entry.name}, ${entry.value}`);
+            if (entry.value) {
+                let animLua = _parseAnimationToLua(entry.name, entry.value);
+                if (animLua) {
+                    // A leaf referencing an undefined curve errors ("no such
+                    // bezier") — define it as linear fallback so the leaf still
+                    // applies instead of failing. "default" is built-in.
+                    const cm = animLua.match(/bezier = "([^"]+)"/);
+                    if (cm && cm[1] !== "default" && !definedCurves[cm[1]]) {
+                        console.warn(`[HyprlandBridge] curve "${cm[1]}" referenced by "${entry.name}" is not defined by the theme — using linear fallback.`);
+                        _evalLua(`hl.curve("${cm[1]}", { type = "bezier", points = {{0, 0}, {1, 1}} })`);
+                        definedCurves[cm[1]] = true;
+                    }
+                    _evalLua(animLua);
+                }
+            }
         }
 
-        // Cursor Theme for Hyprland
+        // 5. تطبيق مؤشر الماوس
         if (hyprConfig.cursorTheme) {
             const cursorSize = hyprConfig.cursorSize || 24;
-            Hyprland.dispatch(`exec hyprctl setcursor ${hyprConfig.cursorTheme} ${cursorSize}`);
+            _execCmd(["hyprctl", "setcursor", _cleanStr(hyprConfig.cursorTheme), String(cursorSize)]);
         }
     }
 
@@ -118,34 +309,26 @@ QtObject {
         if (!hyprConfig || !dimensions)
             return;
 
-        let gapsStr = hyprConfig.gapsOut; // EX -> : "10, 10, 10, 52"
+        let gapsStr = hyprConfig.gapsOut;
         let menuWidth = dimensions.menuWidth + (hyprConfig.gapsIn * 2);
+        let gapsArray = String(gapsStr).replace(/['"]/g, "").split(',').map(val => parseInt(val.trim()));
 
-        // 2. تقسيم النص إلى مصفوفة أرقام [Top, Right, Bottom, Left]
-        // نستخدم split(',') للفصل و parseInt لتحويل النص لرقم
-        let gapsArray = gapsStr.split(',').map(val => parseInt(val.trim()));
-
-        // 3. التحقق والحساب
         if (gapsArray.length === 4) {
             let top = gapsArray[0];
             let right = gapsArray[1];
             let bottom = gapsArray[2];
             let left = gapsArray[3];
 
-            // المعادلة: الهامش الجديد = الهامش الأصلي + عرض القائمة
             let newLeftGap = left + menuWidth - 5;
-
-            // 4. إرسال الأمر
-            Hyprland.dispatch(`exec hyprctl keyword general:gaps_out ${top}, ${right}, ${bottom}, ${newLeftGap}`);
-        } else {
-            console.warn("Error: gapsOut format in theme should be 'T, R, B, L'");
+            let lua = `hl.config({ general = { gaps_out = { top = ${top}, right = ${right}, bottom = ${bottom}, left = ${newLeftGap} } } })`;
+            _evalLua(lua);
         }
     }
 
     function resetLeftMenuSpacing(hyprConfig) {
-        if (!hyprConfig)
+        if (!hyprConfig || hyprConfig.gapsOut === undefined)
             return;
-        const gapsOut = hyprConfig.gapsOut;
-        Hyprland.dispatch(`exec hyprctl keyword general:gaps_out ${gapsOut}`);
+        let lua = `hl.config({ general = { gaps_out = ${_gapsToLua(hyprConfig.gapsOut)} } })`;
+        _evalLua(lua);
     }
 }

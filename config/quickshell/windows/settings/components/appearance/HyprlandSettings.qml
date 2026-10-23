@@ -44,6 +44,7 @@ BaseThemeSettings {
     property bool localAnimationsEnabled: true
     property string localBezier: ""
     property string localAnimWindows: ""
+    property string localAnimWindowsIn: ""
     property string localAnimWindowsMove: ""
     property string localAnimWindowsOut: ""
     property string localAnimBorder: ""
@@ -58,6 +59,7 @@ BaseThemeSettings {
             "calm": {
                 bezier: "win_in, 0.16, 1, 0.3, 1\nwin_out, 0.3, 0, 0.6, 1\nmove, 0.2, 0.85, 0.15, 1\nui, 0.25, 0.1, 0.25, 1\nlaunch, 0.12, 0.95, 0.22, 1",
                 windows: "1, 8, launch, popin 90%",
+                windowsIn: "1, 8, launch, popin 90%",
                 windowsMove: "1, 7, move, slide",
                 windowsOut: "1, 7, win_out, popin 88%",
                 border: "1, 10, ui",
@@ -69,6 +71,7 @@ BaseThemeSettings {
             "balanced": {
                 bezier: "win_in, 0.2, 1, 0.32, 1\nwin_out, 0.35, 0, 0.65, 1\nmove, 0.22, 0.75, 0.18, 1\nui, 0.25, 0.1, 0.25, 1\nlaunch, 0.16, 0.9, 0.24, 1",
                 windows: "1, 7, launch, popin 92%",
+                windowsIn: "1, 7, launch, popin 92%",
                 windowsMove: "1, 6, move, slide",
                 windowsOut: "1, 6, win_out, popin 90%",
                 border: "1, 9, ui",
@@ -80,6 +83,7 @@ BaseThemeSettings {
             "snappy": {
                 bezier: "win_in, 0.22, 1, 0.36, 1\nwin_out, 0.4, 0, 0.7, 1\nmove, 0.25, 0.7, 0.2, 1\nui, 0.3, 0.1, 0.25, 1\nlaunch, 0.2, 0.85, 0.25, 1",
                 windows: "1, 6, launch, popin 94%",
+                windowsIn: "1, 6, launch, popin 94%",
                 windowsMove: "1, 5, move, slide",
                 windowsOut: "1, 5, win_out, popin 92%",
                 border: "1, 8, ui",
@@ -140,7 +144,7 @@ BaseThemeSettings {
     function _detectAnimationPreset() {
         for (const key of ["calm", "balanced", "snappy"]) {
             const preset = _animationPresets[key];
-            if (_trimmed(localBezier) === _trimmed(preset.bezier) && _trimmed(localAnimWindows) === _trimmed(preset.windows) && _trimmed(localAnimWindowsMove) === _trimmed(preset.windowsMove) && _trimmed(localAnimWindowsOut) === _trimmed(preset.windowsOut) && _trimmed(localAnimBorder) === _trimmed(preset.border) && _trimmed(localAnimBorderAngle) === _trimmed(preset.borderAngle) && _trimmed(localAnimFadeIn) === _trimmed(preset.fadeIn) && _trimmed(localAnimFadeOut) === _trimmed(preset.fadeOut) && _trimmed(localAnimWorkspaces) === _trimmed(preset.workspaces))
+            if (_trimmed(localBezier) === _trimmed(preset.bezier) && _trimmed(localAnimWindows) === _trimmed(preset.windows) && _trimmed(localAnimWindowsIn) === _trimmed(preset.windowsIn) && _trimmed(localAnimWindowsMove) === _trimmed(preset.windowsMove) && _trimmed(localAnimWindowsOut) === _trimmed(preset.windowsOut) && _trimmed(localAnimBorder) === _trimmed(preset.border) && _trimmed(localAnimBorderAngle) === _trimmed(preset.borderAngle) && _trimmed(localAnimFadeIn) === _trimmed(preset.fadeIn) && _trimmed(localAnimFadeOut) === _trimmed(preset.fadeOut) && _trimmed(localAnimWorkspaces) === _trimmed(preset.workspaces))
                 return key;
         }
 
@@ -155,6 +159,7 @@ BaseThemeSettings {
         localAnimationsEnabled = true;
         localBezier = preset.bezier;
         localAnimWindows = preset.windows;
+        localAnimWindowsIn = preset.windowsIn;
         localAnimWindowsMove = preset.windowsMove;
         localAnimWindowsOut = preset.windowsOut;
         localAnimBorder = preset.border;
@@ -168,6 +173,7 @@ BaseThemeSettings {
             "_hyprAnimationsEnabled": true,
             "_hyprBezier": localBezier,
             "_hyprAnimWindows": localAnimWindows,
+            "_hyprAnimWindowsIn": localAnimWindowsIn,
             "_hyprAnimWindowsMove": localAnimWindowsMove,
             "_hyprAnimWindowsOut": localAnimWindowsOut,
             "_hyprAnimBorder": localAnimBorder,
@@ -204,6 +210,7 @@ BaseThemeSettings {
         localAnimationsEnabled = theme._hyprAnimationsEnabled;
         localBezier = theme._hyprBezier;
         localAnimWindows = theme._hyprAnimWindows;
+        localAnimWindowsIn = theme._hyprAnimWindowsIn !== undefined ? theme._hyprAnimWindowsIn : localAnimWindows;
         localAnimWindowsMove = theme._hyprAnimWindowsMove;
         localAnimWindowsOut = theme._hyprAnimWindowsOut;
         localAnimBorder = theme._hyprAnimBorder;
@@ -235,6 +242,7 @@ BaseThemeSettings {
             "_hyprAnimationsEnabled": localAnimationsEnabled,
             "_hyprBezier": localBezier,
             "_hyprAnimWindows": localAnimWindows,
+            "_hyprAnimWindowsIn": localAnimWindowsIn,
             "_hyprAnimWindowsMove": localAnimWindowsMove,
             "_hyprAnimWindowsOut": localAnimWindowsOut,
             "_hyprAnimBorder": localAnimBorder,
@@ -754,6 +762,11 @@ BaseThemeSettings {
                                 label: qsTr("Window Open"),
                                 prop: "_hyprAnimWindows",
                                 valueProp: "localAnimWindows"
+                            },
+                            {
+                                label: qsTr("Window Open (In)"),
+                                prop: "_hyprAnimWindowsIn",
+                                valueProp: "localAnimWindowsIn"
                             },
                             {
                                 label: qsTr("Window Move"),

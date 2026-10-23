@@ -11,6 +11,5 @@ config/ags/node_modules
 */*/*/*/*/*/__pycache__/*
 */*/*/*/*/*/*/__pycache__/*
 config/quickshell/.qmlls.ini
-
 config/quickshell/graphify-out
 config/quickshell/scripts/python/ai/graphify-out

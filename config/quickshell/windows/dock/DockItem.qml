@@ -49,7 +49,8 @@ Item {
 
     function launchOrFocus() {
         if (isRunning && windowAddress) {
-            Hyprland.dispatch("focuswindow address:" + windowAddress);
+            // NOTE: list form — {command:[...]} throws TypeError on QS 0.3.0.
+            Quickshell.execDetached(["hyprctl", "dispatch", `hl.dsp.focus({window = "address:${windowAddress}"})`]);
         } else if (appData && typeof appData.execute === "function") {
             appData.execute();
         } else if (appId) {
@@ -58,10 +59,18 @@ Item {
         }
     }
 
+    // NOTE: list form — {command:[...], workingDirectory} throws TypeError on
+    // QS 0.3.0, so the working directory is folded into the sh -c script.
+    function _cdPrefix(workDir) {
+        if (!workDir)
+            return "";
+        return "cd '" + String(workDir).replace(/'/g, "'\\''") + "' && ";
+    }
+
     // تشغيل التطبيق مع تجاهل اللوكال الحالي للنظام
     function launchWithDefaultLocale() {
-        // نمرر اللوكال عبر sh -c prefix (مضمون على كل إصدارات Quickshell)
-        // نمرر كقائمة ["sh", "-c", finalCommand] لتجنب أي غموض في تفسير execDetached
+        // نمرر اللوكال عبر sh -c prefix (مضمون على كل إصدارات Quickshell).
+        // execDetached list form passes argv verbatim (no shell), hence sh -c.
         const envPrefix = "LANG=C.UTF-8 LC_ALL=C.UTF-8 ";
         console.info("[Locale][Dock.launchWithDefaultLocale] ==== appId=" + appId);
         if (appData) {
@@ -74,24 +83,16 @@ Item {
         if (appData && appData.execString) {
             const finalCmd = envPrefix + appData.execString;
             console.info("[Locale][Dock] path=execString, final command:", JSON.stringify(finalCmd));
-            Quickshell.execDetached({
-                command: ["sh", "-c", finalCmd],
-                workingDirectory: appData.workingDirectory
-            });
+            Quickshell.execDetached(["sh", "-c", itemRoot._cdPrefix(appData.workingDirectory) + finalCmd]);
         } else if (appData && appData.command) {
             const finalCmd = envPrefix + appData.command;
             console.info("[Locale][Dock] path=command, final command:", JSON.stringify(finalCmd));
-            Quickshell.execDetached({
-                command: ["sh", "-c", finalCmd],
-                workingDirectory: appData.workingDirectory
-            });
+            Quickshell.execDetached(["sh", "-c", itemRoot._cdPrefix(appData.workingDirectory) + finalCmd]);
         } else if (appId) {
             let cleanCmd = appId.endsWith(".desktop") ? appId.slice(0, -8) : appId;
             const finalCmd = envPrefix + "bin/" + cleanCmd;
             console.info("[Locale][Dock] path=appId, final command:", JSON.stringify(finalCmd));
-            Quickshell.execDetached({
-                command: ["sh", "-c", finalCmd]
-            });
+            Quickshell.execDetached(["sh", "-c", finalCmd]);
         } else {
             console.warn("[Locale][Dock] لا يوجد appData ولا appId - لا يمكن التشغيل");
         }
@@ -327,7 +328,7 @@ Item {
                         hoverEnabled: true
                         onClicked: {
                             if (modelData && modelData.address) {
-                                Hyprland.dispatch("focuswindow address:" + modelData.address);
+                                Quickshell.execDetached(["hyprctl", "dispatch", `hl.dsp.focus({window = "address:${modelData.address}"})`]);
                             }
                             tooltip.opacity = 0;
                             tooltipDelay.stop();
@@ -423,7 +424,7 @@ Item {
                     contextMenu.close();
                     itemRoot.closeContextMenu();
                     if (itemRoot.windowAddress) {
-                        Hyprland.dispatch("closewindow address:" + itemRoot.windowAddress);
+                        Quickshell.execDetached(["hyprctl", "dispatch", `hl.dsp.window.close({window = "address:${itemRoot.windowAddress}"})`]);
                     }
                 }
             }
