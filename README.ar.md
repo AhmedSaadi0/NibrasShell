@@ -12,7 +12,7 @@
 
 <br>
 
-<img src="https://nibras-shell.ahmedsaadi0.workers.dev/assets/material-dark.png" alt="معاينة NibrasShell" width="100%">
+<img src="https://nibras-shell.ahmedsaadi0.workers.dev/assets/material-dark.webp" alt="معاينة NibrasShell" width="100%">
 
 ---
 

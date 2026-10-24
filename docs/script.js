@@ -1285,20 +1285,20 @@ function setupCodeBlocks() {
 // --- إدارة الثيمات والصور ---
 function resolveHeroImage(theme) {
   const map = {
-    tokyonight: "assets/tokyonight-dark.png",
-    "tokyonight-light": "assets/tokyonight-light.jpg",
-    dracula: "assets/dracula-dark.png",
-    "dracula-light": "assets/dracula-light.png",
-    catppuccin: "assets/catppuccin-dark.png",
-    "catppuccin-light": "assets/catppuccin-light.jpg",
-    gruvbox: "assets/gruvbox-dark.png",
-    "gruvbox-light": "assets/gruvbox-light.png",
-    nord: "assets/nord-dark.png",
-    "nord-light": "assets/nord-light.png",
-    material: "assets/material-dark.png",
-    "material-light": "assets/material-light.png",
+    tokyonight: "assets/tokyonight-dark.webp",
+    "tokyonight-light": "assets/tokyonight-light.webp",
+    dracula: "assets/dracula-dark.webp",
+    "dracula-light": "assets/dracula-light.webp",
+    catppuccin: "assets/catppuccin-dark.webp",
+    "catppuccin-light": "assets/catppuccin-light.webp",
+    gruvbox: "assets/gruvbox-dark.webp",
+    "gruvbox-light": "assets/gruvbox-light.webp",
+    nord: "assets/nord-dark.webp",
+    "nord-light": "assets/nord-light.webp",
+    material: "assets/material-dark.webp",
+    "material-light": "assets/material-light.webp",
   };
-  return map[theme] || "assets/material-dark.png";
+  return map[theme] || "assets/material-dark.webp";
 }
 
 function applyTheme(theme) {
