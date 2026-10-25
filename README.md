@@ -12,7 +12,7 @@
 
 <br>
 
-<img src="https://nibras-shell.ahmedsaadi0.workers.dev/assets/material-dark.webp" alt="NibrasShell Preview" width="100%">
+<img src="docs/assets/github-preview.webp" alt="NibrasShell Preview" width="100%">
 
 ---
 
