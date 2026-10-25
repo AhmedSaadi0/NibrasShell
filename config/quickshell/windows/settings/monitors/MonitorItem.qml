@@ -22,25 +22,32 @@ Rectangle {
     signal applyRule(string name, string res, string pos, string scale, int transform, int vrr, string mirror)
     signal placeRelative(string name, string side)
     signal runCommand(var argv)
-    signal requestRefresh
 
     // يمنع الأحداث أثناء مزامنة الواجهة مع البيانات
     property bool blockUi: false
 
     // لقطة للقاعدة قبل تطبيق المرآة (لا يمكن الوثوق بقيم JSON أثناء المرآة)
+    // تبقى محفوظة عبر تحديثات البيانات — تُمسح فقط عند إلغاء المرآة
     property var preMirrorRule: null
 
     // =========================================================
     // 1. خصائص محسوبة
     // =========================================================
 
-    readonly property bool isMirror: typeof monitor?.mirrorOf === "number"
+    // mirrorOf في Hyprland >= 0.56 نص دائماً: "none" أو رقم الشاشة المصدر كنص — ليس رقماً أبداً
+    readonly property bool isMirror: monitor?.mirrorOf !== undefined && monitor.mirrorOf !== null && monitor.mirrorOf !== "none"
     readonly property bool isDisabled: !!monitor?.disabled
     readonly property bool isFocused: !!monitor?.focused
+    // عدد الشاشات المفعلة حالياً — يُستخدم لمنع تعطيل آخر شاشة عاملة
+    readonly property int activeMonitorCount: (allMonitors || []).filter(m => m && !m.disabled).length
+    // شاشة معطلة: سويتشها يبقى مفعلاً دائماً (يمكن إعادة تفعيلها)؛
+    // آخر شاشة مفعلة: السويتش مقفل لأن يجب بقاء شاشة واحدة عاملة على الأقل
+    readonly property bool canToggleEnabled: isDisabled || activeMonitorCount > 1
     readonly property string mirrorSource: {
         if (!isMirror || !monitor)
             return "";
-        const src = allMonitors.find(m => m.id === monitor.mirrorOf);
+        // mirrorOf قد يكون رقم ID للشاشة المصدر كنص أو اسمها حسب إصدار Hyprland
+        const src = allMonitors.find(m => String(m.id) === String(monitor.mirrorOf) || m.name === monitor.mirrorOf);
         return src ? src.name : "";
     }
     readonly property string currentNormalized: {
@@ -72,7 +79,8 @@ Rectangle {
         return currentNormalized;
     }
     function basePos() {
-        if (isMirror || monitor?.x === undefined)
+        // شاشة معطلة/مرآة/بلا هندسة صالحة: hyprctl يبلّغ أصفاراً غير موثوقة (x=0, width=0) → auto
+        if (isMirror || isDisabled || !monitor?.width || monitor?.x === undefined)
             return "auto";
         return `${monitor.x}x${monitor.y}`;
     }
@@ -102,9 +110,11 @@ Rectangle {
         applyRule(monitor.name, res, pos, scale, selectedTransform(), selectedVrr(), mirror || "");
     }
 
+    // تحويلات wl_output الكاملة (0-7): 0-3 دوران، 4-7 انعكاس + دوران
+    readonly property var transformValues: [0, 1, 2, 3, 4, 5, 6, 7]
+
     function selectedTransform() {
-        const vals = [0, 1, 2, 3];
-        return vals[transformCombo.currentIndex] ?? 0;
+        return transformValues[transformCombo.currentIndex] ?? 0;
     }
 
     function selectedVrr() {
@@ -164,7 +174,7 @@ Rectangle {
 
         // المقياس والدوران و VRR
         scaleCombo.currentIndex = nearestScaleIndex(Number(monitor?.scale || 1));
-        const transformIndex = [0, 1, 2, 3].indexOf(Number(monitor?.transform || 0));
+        const transformIndex = transformValues.indexOf(Number(monitor?.transform ?? 0));
         transformCombo.currentIndex = Math.max(0, transformIndex);
         vrrCombo.currentIndex = Math.max(0, [0, 1, 2].indexOf(Number(monitor?.vrr || 0)));
 
@@ -176,17 +186,17 @@ Rectangle {
         }
         mirrorCombo.currentIndex = mirrorIndex;
 
-        // حقول الموضع
-        xField.text = String(monitor?.x ?? 0);
-        yField.text = String(monitor?.y ?? 0);
+        // حقول الموضع — لا نكتب فوق ما يكتبه المستخدم تحريراً نشطاً أثناء تحديث خلفي
+        if (!xField.activeFocus)
+            xField.text = String(monitor?.x ?? 0);
+        if (!yField.activeFocus)
+            yField.text = String(monitor?.y ?? 0);
 
         // السويتشات: ضبط يدوي داخل الحماية حتى لا يطبّق أي أمر تلقائياً
         enabledSwitch.isChecked = !isDisabled;
         dpmsSwitch.isChecked = !!monitor?.dpmsStatus;
 
-        // لقطة المرآة خاصة بالشاشة الحالية فقط
-        preMirrorRule = null;
-
+        // لقطة preMirrorRule تبقى محفوظة هنا — تُمسح فقط عند إلغاء المرآة (unmirror)
         blockUi = false;
     }
 
@@ -196,7 +206,8 @@ Rectangle {
     // 2. الشكل
     // =========================================================
 
-    width: 610
+    // عرض متجاوب: نتبع عرض القائمة بدل عرض ثابت (كان 610)
+    width: monitorsView.width
     implicitHeight: contentLayout.implicitHeight + 40
     radius: selectedTheme.dimensions.elementRadius
     color: selectedTheme.colors.surfaceContainer
@@ -418,12 +429,12 @@ Rectangle {
                     id: transformCombo
                     Layout.fillWidth: true
                     Layout.preferredHeight: 28
-                    model: ["0°", "90°", "180°", "270°"]
+                    model: ["0°", "90°", "180°", "270°", qsTr("Flipped"), qsTr("Flipped 90°"), qsTr("Flipped 180°"), qsTr("Flipped 270°")]
                     enabled: !isDisabled && !isMirror
                     onActivated: idx => {
                         if (root.blockUi)
                             return;
-                        root.applyWithExtra(`transform,${[0, 1, 2, 3][idx]}`);
+                        root.applyWithExtra(`transform,${root.transformValues[idx]}`);
                     }
                 }
             }
@@ -441,6 +452,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 28
                     model: [qsTr("Off"), qsTr("On"), qsTr("Always")]
+                    enabled: !isDisabled && !isMirror
                     onActivated: idx => {
                         if (root.blockUi)
                             return;
@@ -489,15 +501,18 @@ Rectangle {
             SettingSwitch {
                 id: enabledSwitch
                 Layout.fillWidth: true
-                label: qsTr("Monitor Enabled")
-                // لا نربطها بالبيانات مباشرة — تُضبط يدوياً داخل syncFromMonitor
-                isChecked: false
+                // قفل السويتش إذا كانت هذه آخر شاشة مفعلة؛ علامة "(Required)" توضح السبب دائماً
+                // (ToolTip لن يظهر لأن MouseArea لا يستقبل hover وهو ابن عنصر معطّل)
+                label: qsTr("Monitor Enabled") + (!root.canToggleEnabled ? qsTr(" (Required)") : "")
+                enabled: root.canToggleEnabled
                 onIsCheckedChanged: {
                     if (root.blockUi)
                         return;
                     if (isChecked) {
-                        // إعادة تفعيل بقاعدة كاملة
-                        root.applyCurrent(root.baseRes(), root.basePos(), String(root.monitor.scale || 1), "");
+                        // إعادة التفعيل: تمرير disabled = false صراحة ضروري، لأن hl.monitor
+                        // يدمج مع القاعدة الموجودة ولن يمسح التعطيل إلا بهذا الحقل.
+                        // بهذا يُبقي Hyprland الوضع/الموضع/المقياس/الدوران/VRR السابقة كما هي.
+                        root.runCommand(["hyprctl", "eval", `hl.monitor({ output = "${root.monitor.name}", disabled = false })`]);
                     } else {
                         root.runCommand(["hyprctl", "eval", `hl.monitor({ output = "${root.monitor.name}", disabled = true })`]);
                     }
@@ -508,7 +523,7 @@ Rectangle {
                 id: dpmsSwitch
                 Layout.fillWidth: true
                 label: qsTr("DPMS (Screen On)")
-                isChecked: false
+                enabled: !isDisabled && !isMirror
                 onIsCheckedChanged: {
                     if (root.blockUi)
                         return;
@@ -629,20 +644,6 @@ Rectangle {
                 normalForeground: selectedTheme.colors.onPrimaryContainer
                 enabled: !isDisabled
                 onClicked: root.runCommand(["hyprctl", "dispatch", `hl.dsp.focus({ monitor = "${root.monitor.name}" })`])
-            }
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            MButton {
-                text: qsTr("Refresh")
-                implicitWidth: 100
-                iconText: "⟳"
-                iconFirst: true
-                normalBackground: selectedTheme.colors.surfaceContainerHighest
-                normalForeground: selectedTheme.colors.onSurface
-                onClicked: root.requestRefresh()
             }
         }
     }

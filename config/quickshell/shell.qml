@@ -129,7 +129,7 @@ ShellRoot {
         id: mainUiLoader
         anchors.fill: parent
         active: false
-        asynchronous: false // تحميل خلفي ذكي خفيف على المعالج
+        asynchronous: true // تحميل خلفي ذكي خفيف على المعالج
         opacity: 0.0
         sourceComponent: mainUiComponent
 
