@@ -30,6 +30,7 @@ I didn't build this interface as a product, but simply because I genuinely enjoy
 - **🎨 Deep Theming:** Full Material 3 dynamic coloring + support for GIF/Video wallpapers.
 - **🛠️ Control Hub:** A built-in Settings App to manage everything visually without touching config files.
 - **🚀 Performance:** Built on **Quickshell** & **Hyprland** for speed and fluidity, with asynchronous architecture to prevent UI freezing.
+- **🛡️ Non-Destructive & Config-Safe:** NibrasShell never tampers with your personal dotfiles or `hyprland.conf`. All modifications are applied dynamically in real-time via **Hyprland IPC** and persisted internally within the shell itself, keeping your personal setup completely clean.
 
 ---
 
@@ -64,4 +65,3 @@ Special thanks to:
 
 - [Quickshell](https://quickshell.org/) developers for their amazing framework
 - [Alaa Elsamouly](https://samouly.is-a.dev/) for being a good friend
-
