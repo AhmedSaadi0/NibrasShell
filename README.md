@@ -12,7 +12,7 @@
 
 <br>
 
-<!-- <img src="docs/assets/github-preview.webp" alt="NibrasShell Preview" width="100%"> -->
+<img src="docs/assets/github-preview.webp" alt="NibrasShell Preview" width="100%">
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=zq46Nw_rijE">
