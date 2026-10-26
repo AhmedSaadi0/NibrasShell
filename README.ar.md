@@ -14,6 +14,12 @@
 
 <img src="docs/assets/github-preview.webp" alt="معاينة NibrasShell" width="100%">
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=YOUR_VIDEO_ID">
+    <img src="https://img.youtube.com/vi/YOUR_VIDEO_ID/maxresdefault.jpg" alt="شاهد NibrasShell Demo" width="100%">
+  </a>
+</p>
+
 ---
 
 ## 🌟 لماذا هذا المشروع؟
