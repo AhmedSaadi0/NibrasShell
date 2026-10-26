@@ -12,11 +12,15 @@
 
 <br>
 
-<img src="docs/assets/github-preview.webp" alt="NibrasShell Preview" width="100%">
+<!-- <img src="docs/assets/github-preview.webp" alt="NibrasShell Preview" width="100%"> -->
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=zq46Nw_rijE">
-    <img src="https://www.youtube.com/watch?v=zq46Nw_rijE/maxresdefault.jpg" alt="Watch NibrasShell Demo" width="100%">
+    <img src="https://img.youtube.com/vi/zq46Nw_rijE/maxresdefault.jpg" alt="NibrasShell Demo" width="100%">
+  </a>
+  <br>
+  <a href="https://www.youtube.com/watch?v=zq46Nw_rijE">
+    <b>▶️ Watch the full video demo on YouTube</b>
   </a>
 </p>
 
