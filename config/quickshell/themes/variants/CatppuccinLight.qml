@@ -14,12 +14,12 @@ BaseTheme {
 
     _desktopClockEnabled: true
     _desktopClockFont: "Overhead BRK"
-    _desktopClockColor: Qt.rgba(0.1568627506494522, 0.12156862765550613, 0.20393683016300201, 1)
+    _desktopClockColor: Qt.rgba(0.157, 0.122, 0.204, 1)
     _desktopClockFormat: "hh:mm AP - MM/dd"
     _desktopClockSize: Qt.size(638.23, 225.73)
     _desktopClockPosition: Qt.point(638.09, 552.60)
     _desktopClockShadowEnabled: false
-    _desktopClockShadowColor: Qt.rgba(0, 0, 0.2666666805744171, 0)
+    _desktopClockShadowColor: Qt.rgba(0, 0, 0.267, 0)
     _desktopClockUseThemeColor: false
     _desktopClockUseAnimation: true
 
@@ -50,44 +50,50 @@ BaseTheme {
     _hyprDimInactive: false
     _hyprDimStrength: 0
     _hyprShadowRange: 11
-    _hyprShadowColor: Qt.rgba(0.05098039284348488, 0.05098039284348488, 0.05098039284348488, 0.3333333432674408)
+    _hyprShadowColor: Qt.rgba(0.051, 0.051, 0.051, 0.333)
 
-    _primary: Qt.rgba(0.125490203499794, 0.6235294342041016, 0.7098191976547241, 1)           // Teal
-    _onPrimary: Qt.rgba(0.9372549057006836, 0.9450980424880981, 0.9607843160629272, 1)         // Base
-    _secondary: Qt.rgba(0.9176470637321472, 0.4627451002597809, 0.7961089611053467, 1)         // Pink
-    _onSecondary: Qt.rgba(0.9372549057006836, 0.9450980424880981, 0.9607843160629272, 1)
-    _tertiary: Qt.rgba(0.2509956657886505, 0.6274662613868713, 0.16862745583057404, 1)          // Green (تم تغييرها لـ Latte Green الحقيقية لزيادة التناسق)
-    _onTertiary: Qt.rgba(0.9372549057006836, 0.9450980424880981, 0.9607843160629272, 1)
-    _error: Qt.rgba(0.8235446810722351, 0.05882352963089943, 0.2234988957643509, 1)             // Red
-    _onError: Qt.rgba(0.9372549057006836, 0.9450980424880981, 0.9607843160629272, 1)
+    // الألوان الرئيسية لـ Catppuccin Latte
+    _primary: Qt.rgba(0.106, 0.525, 0.796, 1)                     // Latte Blue (#1e66f5)
+    _onPrimary: Qt.rgba(1, 1, 1, 1)
 
-    _surface: Qt.rgba(0.9372549057006836, 0.9450980424880981, 0.9607843160629272, 1)                      // Base
-    _onSurface: Qt.rgba(0.2980392277240753, 0.30981919169425964, 0.4117799699306488, 1)                    // Text
-    _surfaceDim: Qt.rgba(0.8627451062202454, 0.8784313797950745, 0.9098039269447327, 1)                   // Crust
-    _surfaceBright: Qt.rgba(0.9372549057006836, 0.9450980424880981, 0.9607843160629272, 1)                // Base
+    _secondary: Qt.rgba(0.918, 0.463, 0.796, 1)                   // Latte Pink (#ea76cb)
+    _onSecondary: Qt.rgba(0.298, 0.310, 0.412, 1)                 // تصحيح: نص داكن للقراءة فوق الوردي (#4c4f69)
+
+    _tertiary: Qt.rgba(0.251, 0.627, 0.169, 1)                    // Latte Green (#40a02b)
+    _onTertiary: Qt.rgba(1, 1, 1, 1)
+
+    _error: Qt.rgba(0.824, 0.059, 0.224, 1)                       // Latte Red (#d20f39)
+    _onError: Qt.rgba(1, 1, 1, 1)
+
+    // الخلفيات والأسطح
+    _surface: Qt.rgba(0.937, 0.945, 0.961, 1)                     // Base (#eff1f5)
+    _onSurface: Qt.rgba(0.298, 0.310, 0.412, 1)                   // Text (#4c4f69)
+    _surfaceDim: Qt.rgba(0.863, 0.878, 0.910, 1)                  // Crust (#dce0e8)
+    _surfaceBright: Qt.rgba(1, 1, 1, 1)
+
     _surfaceContainerLowest: Qt.rgba(1, 1, 1, 1)
-    _surfaceContainerLow: Qt.rgba(0.9490348696708679, 0.9529564380645752, 0.9686274528503418, 1)          // Mantle
-    _surfaceContainer: Qt.rgba(0.9372549057006836, 0.9450980424880981, 0.9607843160629272, 1)             // Base
-    _surfaceContainerHigh: Qt.rgba(0.9019760489463806, 0.9137407541275024, 0.9372549057006836, 1)         // Mantle
-    _surfaceContainerHighest: Qt.rgba(0.800000011920929, 0.8156862854957581, 0.8549019694328308, 1)      // Surface0
-    _surfaceVariant: Qt.rgba(0.9019760489463806, 0.9137407541275024, 0.9372549057006836, 1)
-    _onSurfaceVariant: Qt.rgba(0.42352941632270813, 0.43921568989753723, 0.5254902243614197, 1)             // Subtext0
+    _surfaceContainerLow: Qt.rgba(0.902, 0.914, 0.937, 1)         // Mantle (#e6e9ef)
+    _surfaceContainer: Qt.rgba(0.937, 0.945, 0.961, 1)            // Base (#eff1f5)
+    _surfaceContainerHigh: Qt.rgba(0.863, 0.878, 0.910, 1)
+    _surfaceContainerHighest: Qt.rgba(0.800, 0.816, 0.855, 1)     // Surface0 (#ccd0da)
+    _surfaceVariant: Qt.rgba(0.863, 0.878, 0.910, 1)
+    _onSurfaceVariant: Qt.rgba(0.424, 0.439, 0.525, 1)            // Subtext0 (#6c6f85)
 
-    _primaryContainer: Qt.rgba(0.8235446810722351, 0.9450980424880981, 0.9607843160629272, 1)             // Light Teal Container
-    _onPrimaryContainer: Qt.rgba(0.11764705926179886, 0.42352941632270813, 0.47843137383461, 1)
-    _secondaryContainer: Qt.rgba(0.9921568632125854, 0.8745098114013672, 0.9137254953384399, 1)           // Light Pink Container
-    _onSecondaryContainer: Qt.rgba(0.6196231245994568, 0.239215686917305, 0.5098039507865906, 1)
-    _tertiaryContainer: Qt.rgba(0.886274516582489, 0.9372549057006836, 0.8745098114013672, 1)            // Light Green Container
-    _onTertiaryContainer: Qt.rgba(0.1765011101961136, 0.43921568989753723, 0.11764705926179886, 1)
-    _errorContainer: Qt.rgba(0.9725490212440491, 0.8431525230407715, 0.8549019694328308, 1)               // Light Red Container
-    _onErrorContainer: Qt.rgba(0.8235446810722351, 0.05882352963089943, 0.2234988957643509, 1)
+    _primaryContainer: Qt.rgba(0.824, 0.902, 0.988, 1)
+    _onPrimaryContainer: Qt.rgba(0.106, 0.325, 0.596, 1)
+    _secondaryContainer: Qt.rgba(0.992, 0.875, 0.914, 1)
+    _onSecondaryContainer: Qt.rgba(0.518, 0.153, 0.424, 1)
+    _tertiaryContainer: Qt.rgba(0.886, 0.937, 0.875, 1)
+    _onTertiaryContainer: Qt.rgba(0.176, 0.439, 0.118, 1)
+    _errorContainer: Qt.rgba(0.973, 0.843, 0.855, 1)
+    _onErrorContainer: Qt.rgba(0.524, 0.039, 0.141, 1)
 
-    _outline: Qt.rgba(0.6117647290229797, 0.6274510025978088, 0.6901960968971252, 1)                      // Surface2
-    _outlineVariant: Qt.rgba(0.800000011920929, 0.8156862854957581, 0.8549019694328308, 1)               // Surface0
-    _inverseSurface: Qt.rgba(0.2980392277240753, 0.30981919169425964, 0.4117799699306488, 1)
-    _onInverseSurface: Qt.rgba(0.9372549057006836, 0.9450980424880981, 0.9607843160629272, 1)
-    _inversePrimary: Qt.rgba(0.125490203499794, 0.6235294342041016, 0.7098191976547241, 1)
-    _shadow: Qt.rgba(0.13333334028720856, 0.13333334028720856, 0.13333334028720856, 1)
+    _outline: Qt.rgba(0.612, 0.627, 0.690, 1)                     // Surface2 (#9ca0b0)
+    _outlineVariant: Qt.rgba(0.800, 0.816, 0.855, 1)              // Surface0 (#ccd0da)
+    _inverseSurface: Qt.rgba(0.298, 0.310, 0.412, 1)
+    _onInverseSurface: Qt.rgba(0.937, 0.945, 0.961, 1)
+    _inversePrimary: Qt.rgba(0.537, 0.706, 0.980, 1)
+    _shadow: Qt.rgba(0.133, 0.133, 0.133, 1)
     _scrim: Qt.rgba(0, 0, 0, 1)
     _enableWallpaperBlur: true
 
@@ -95,5 +101,5 @@ BaseTheme {
     _konsoleProfile: "CatppuccinLight.profile"
 
     _gtkTheme: "Catppuccin-Latte-Standard-Blue-Light"
-    _desktopClockGlowColor: Qt.rgba(0, 0, 0.2666666805744171, 0)
+    _desktopClockGlowColor: Qt.rgba(0, 0, 0.267, 0)
 }
