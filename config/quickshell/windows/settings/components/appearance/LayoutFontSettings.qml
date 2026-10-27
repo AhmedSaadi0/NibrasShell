@@ -31,6 +31,7 @@ BaseThemeSettings {
     property int localSpacingMedium: 8
     property int localSpacingLarge: 12
 
+    property int localBaseRadius: 12
     property int localElementRadius: 12
     property int localBarHeight: 30
     property int localBarBottomMargin: 10
@@ -39,8 +40,10 @@ BaseThemeSettings {
     property int localMenuWidth: 380
     property int localMenuWidgetsMargin: 15
 
+    property int localShapeNone: 0
     property int localShapeExtraSmall: 4
     property int localShapeSmall: 8
+    property int localShapeMedium: 12
     property int localShapeLarge: 16
     property int localShapeExtraLarge: 24
     property int localShapeFull: 28
@@ -52,6 +55,81 @@ BaseThemeSettings {
     property int localScrollbarWidth: 6
     property int localStatCardRadius: 20
     property int localStatCardHeight: 104
+
+    readonly property int radiusSafeMax: 40
+    readonly property int shapeNoneSafeMax: 8
+    readonly property bool radiusMasterIsUniform: localBaseRadius === localElementRadius && localBaseRadius === localShapeMedium
+
+    function sanitizeRadius(value, fallback, maxValue) {
+        const safeFallback = (typeof fallback === "number" && Number.isFinite(fallback))
+                ? fallback : 12;
+
+        if (value === undefined || value === null || value === "")
+            return safeFallback;
+        if (typeof value === "boolean" || typeof value === "object")
+            return safeFallback;
+
+        const numeric = typeof value === "number" ? value : Number(value);
+        if (!Number.isFinite(numeric))
+            return safeFallback;
+
+        const upper = (typeof maxValue === "number" && Number.isFinite(maxValue))
+                ? maxValue : root.radiusSafeMax;
+        return Math.max(0, Math.min(upper, Math.round(numeric)));
+    }
+
+    function previewRadiusMaster(value) {
+        const radius = root.sanitizeRadius(value, root.localBaseRadius, root.radiusSafeMax);
+        root.localBaseRadius = radius;
+        root.localElementRadius = radius;
+        root.localShapeMedium = radius;
+    }
+
+    function applyRadiusMaster(value) {
+        if (!root.theme || root.isLoading || !root.isReady)
+            return false;
+
+        const radius = root.sanitizeRadius(value, root.localBaseRadius, root.radiusSafeMax);
+        root.localBaseRadius = radius;
+        root.localElementRadius = radius;
+        root.localShapeMedium = radius;
+
+        return root.applyProperties({
+            "_baseRadius": radius,
+            "_elementRadius": radius,
+            "_shapeMedium": radius
+        }, false);
+    }
+
+    function previewShapeMedium(value) {
+        root.localShapeMedium = root.sanitizeRadius(
+                value, root.localShapeMedium, root.radiusSafeMax);
+    }
+
+    function applyShapeMedium(value) {
+        if (!root.theme || root.isLoading || !root.isReady)
+            return false;
+
+        const radius = root.sanitizeRadius(value, root.localShapeMedium, root.radiusSafeMax);
+        root.localShapeMedium = radius;
+
+        return root.applyProperties({ "_shapeMedium": radius }, false);
+    }
+
+    function previewShapeNone(value) {
+        root.localShapeNone = root.sanitizeRadius(
+                value, root.localShapeNone, root.shapeNoneSafeMax);
+    }
+
+    function applyShapeNone(value) {
+        if (!root.theme || root.isLoading || !root.isReady)
+            return false;
+
+        const radius = root.sanitizeRadius(value, root.localShapeNone, root.shapeNoneSafeMax);
+        root.localShapeNone = radius;
+
+        return root.applyProperties({ "_shapeNone": radius }, false);
+    }
 
     function syncFromTheme() {
         localIconFont = theme._iconFont;
@@ -69,7 +147,11 @@ BaseThemeSettings {
         localSpacingMedium = theme._spacingMedium;
         localSpacingLarge = theme._spacingLarge;
 
-        localElementRadius = theme._elementRadius;
+        localBaseRadius = sanitizeRadius(theme._baseRadius, 12, radiusSafeMax);
+        localElementRadius = sanitizeRadius(theme._elementRadius, localBaseRadius, radiusSafeMax);
+        localShapeMedium = sanitizeRadius(theme._shapeMedium, localBaseRadius, radiusSafeMax);
+        localShapeNone = sanitizeRadius(theme._shapeNone, 0, shapeNoneSafeMax);
+
         localBarHeight = theme._barHeight;
         localBarBottomMargin = theme._barBottomMargin;
         localBarWidgetsHeight = theme._barWidgetsHeight;
@@ -94,6 +176,10 @@ BaseThemeSettings {
 
     function serializeData() {
         return {
+            "_baseRadius": localBaseRadius,
+            "_elementRadius": localElementRadius,
+            "_shapeMedium": localShapeMedium,
+            "_shapeNone": localShapeNone,
             "_iconFont": localIconFont,
             "_bodyFont": localBodyFont,
             "_baseFontSize": localBaseFontSize,
@@ -106,7 +192,6 @@ BaseThemeSettings {
             "_spacingSmall": localSpacingSmall,
             "_spacingMedium": localSpacingMedium,
             "_spacingLarge": localSpacingLarge,
-            "_elementRadius": localElementRadius,
             "_barHeight": localBarHeight,
             "_barBottomMargin": localBarBottomMargin,
             "_barWidgetsHeight": localBarWidgetsHeight,
@@ -142,13 +227,21 @@ BaseThemeSettings {
     component PreviewBox: Rectangle {
         property alias text: previewLabel.text
         property alias previewFont: previewLabel.font
+        property int effectiveRadius: root.localElementRadius
 
         Layout.fillWidth: true
         color: root.theme.colors.surfaceContainerHigh.alpha(0.65)
-        radius: root.theme.dimensions.baseRadius / 1.5
+        radius: Math.max(0, Math.round(effectiveRadius / 1.5))
         border.color: root.theme.colors.primary.alpha(0.14)
         border.width: 1
         implicitHeight: previewLabel.implicitHeight + 22
+
+        Behavior on radius {
+            NumberAnimation {
+                duration: 120
+                easing.type: Easing.OutCubic
+            }
+        }
 
         Controls.Label {
             id: previewLabel
@@ -356,6 +449,38 @@ BaseThemeSettings {
             title: qsTr("Spacing & Radius")
             subtitle: qsTr("Use these controls to make the interface denser or more relaxed without touching every component manually.")
 
+            SliderWithLabel {
+                Layout.fillWidth: true
+                label: qsTr("Corner Radius (Master)")
+                from: 0
+                to: 40
+                stepSize: 1
+                decimals: 0
+                value: root.localBaseRadius
+                onCurrentValueChanged: v => root.previewRadiusMaster(v)
+                onEditingFinished: v => root.applyRadiusMaster(v)
+            }
+
+            Controls.Label {
+                Layout.fillWidth: true
+                text: qsTr("Base %1 | Element %2 | Medium %3")
+                        .arg(root.localBaseRadius)
+                        .arg(root.localElementRadius)
+                        .arg(root.localShapeMedium)
+                color: root.theme.colors.onSurfaceVariant
+                font.pixelSize: root.localSmallFontSize
+                wrapMode: Text.WordWrap
+            }
+
+            Controls.Label {
+                Layout.fillWidth: true
+                visible: !root.radiusMasterIsUniform
+                text: qsTr("This theme defines different base, element, or medium radii. Using the master slider will unify them.")
+                color: root.theme.colors.tertiary
+                font.pixelSize: root.localSmallFontSize
+                wrapMode: Text.WordWrap
+            }
+
             GridLayout {
                 Layout.fillWidth: true
                 columns: 2
@@ -397,18 +522,6 @@ BaseThemeSettings {
                         root.applySingleProperty("_spacingLarge", v);
                     }
                 }
-
-                SliderWithLabel {
-                    Layout.fillWidth: true
-                    label: qsTr("Element Radius")
-                    from: 0
-                    to: 36
-                    value: root.localElementRadius
-                    onEditingFinished: v => {
-                        root.localElementRadius = v;
-                        root.applySingleProperty("_elementRadius", v);
-                    }
-                }
             }
         }
 
@@ -418,9 +531,23 @@ BaseThemeSettings {
 
             SliderWithLabel {
                 Layout.fillWidth: true
+                label: qsTr("None (M3 expects 0)")
+                from: 0
+                to: 8
+                stepSize: 1
+                decimals: 0
+                value: root.localShapeNone
+                onCurrentValueChanged: v => root.previewShapeNone(v)
+                onEditingFinished: v => root.applyShapeNone(v)
+            }
+
+            SliderWithLabel {
+                Layout.fillWidth: true
                 label: qsTr("Extra Small")
                 from: 0
                 to: 12
+                stepSize: 1
+                decimals: 0
                 value: root.localShapeExtraSmall
                 onEditingFinished: v => {
                     root.localShapeExtraSmall = v;
@@ -433,10 +560,37 @@ BaseThemeSettings {
                 label: qsTr("Small")
                 from: 0
                 to: 16
+                stepSize: 1
+                decimals: 0
                 value: root.localShapeSmall
                 onEditingFinished: v => {
                     root.localShapeSmall = v;
                     root.applySingleProperty("_shapeSmall", v);
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                SliderWithLabel {
+                    Layout.fillWidth: true
+                    label: qsTr("Medium")
+                    from: 0
+                    to: 40
+                    stepSize: 1
+                    decimals: 0
+                    value: root.localShapeMedium
+                    onCurrentValueChanged: v => root.previewShapeMedium(v)
+                    onEditingFinished: v => root.applyShapeMedium(v)
+                }
+
+                MButton {
+                    text: qsTr("Use master")
+                    Layout.preferredWidth: 110
+                    Layout.alignment: Qt.AlignVCenter
+                    enabled: root.localShapeMedium !== root.localBaseRadius
+                    onClicked: root.applyShapeMedium(root.localBaseRadius)
                 }
             }
 
@@ -445,6 +599,8 @@ BaseThemeSettings {
                 label: qsTr("Large")
                 from: 8
                 to: 32
+                stepSize: 1
+                decimals: 0
                 value: root.localShapeLarge
                 onEditingFinished: v => {
                     root.localShapeLarge = v;
@@ -457,6 +613,8 @@ BaseThemeSettings {
                 label: qsTr("Extra Large")
                 from: 12
                 to: 40
+                stepSize: 1
+                decimals: 0
                 value: root.localShapeExtraLarge
                 onEditingFinished: v => {
                     root.localShapeExtraLarge = v;
@@ -469,6 +627,8 @@ BaseThemeSettings {
                 label: qsTr("Full")
                 from: 12
                 to: 40
+                stepSize: 1
+                decimals: 0
                 value: root.localShapeFull
                 onEditingFinished: v => {
                     root.localShapeFull = v;

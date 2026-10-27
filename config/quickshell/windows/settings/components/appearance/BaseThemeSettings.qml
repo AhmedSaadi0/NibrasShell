@@ -32,6 +32,16 @@ M3GroupBox {
     signal cancelChanges
     signal resetToDefaultClicked
 
+    // Radius tokens have a parent/child relationship: _elementRadius and
+    // _shapeMedium are normally bound to _baseRadius. Apply the root first so
+    // live bindings can cascade; the dependent entries then become no-ops.
+    readonly property var _radiusMutationOrder: [
+        "_baseRadius",
+        "_elementRadius",
+        "_shapeMedium",
+        "_shapeNone"
+    ]
+
     function syncFromTheme() {
         console.warn("BaseThemeSettings: syncFromTheme() needs to be overridden");
     }
@@ -61,36 +71,101 @@ M3GroupBox {
         if (isLoading || !isReady || !theme)
             return;
 
-        let data = serializeData();
+        applyProperties(serializeData(), saveToDisk === true);
+    }
 
-        ThemeManager.updateAndApplyTheme(data, saveToDisk);
+    function applyProperties(propertiesMap, saveToDisk = false) {
+        if (!theme || isLoading || !isReady)
+            return false;
 
-        if (saveToDisk) {
-            root.saveChanges();
+        if (!propertiesMap || typeof propertiesMap !== "object" || Array.isArray(propertiesMap))
+            return false;
+
+        // Pass 1: validate and copy every candidate.
+        const candidates = {};
+        for (const key in propertiesMap) {
+            if (!Object.prototype.hasOwnProperty.call(propertiesMap, key))
+                continue;
+            if (key === "__proto__" || key === "constructor" || key === "prototype")
+                continue;
+            if (!theme.hasOwnProperty(key)) {
+                console.warn(`[${root.title}] Unknown theme property: ${key}`);
+                continue;
+            }
+
+            const value = propertiesMap[key];
+            if (value === undefined || value === null) {
+                console.warn(`[${root.title}] Skipping nullish value for ${key}`);
+                continue;
+            }
+            if (typeof value === "number" && !Number.isFinite(value)) {
+                console.warn(`[${root.title}] Skipping non-finite value for ${key}: ${value}`);
+                continue;
+            }
+
+            candidates[key] = value;
         }
+
+        // A base change may cascade into live dependents. If the caller also
+        // supplied dependent values, keep them even when they currently equal
+        // the target, so the batch can pin the intended final tuple.
+        const baseChanging = Object.prototype.hasOwnProperty.call(candidates, "_baseRadius")
+                && theme._baseRadius !== candidates["_baseRadius"];
+        const pinnedDependents = ["_elementRadius", "_shapeMedium"];
+
+        // Pass 2: drop no-op keys.
+        const normalized = {};
+        for (const key in candidates) {
+            if (!Object.prototype.hasOwnProperty.call(candidates, key))
+                continue;
+
+            const mustPin = baseChanging && pinnedDependents.indexOf(key) !== -1;
+            if (!mustPin && theme[key] === candidates[key])
+                continue;
+
+            normalized[key] = candidates[key];
+        }
+
+        // A no-op Apply must not touch the system. A no-op Save must still
+        // snapshot the current theme, matching existing Save semantics.
+        if (Object.keys(normalized).length === 0 && saveToDisk !== true)
+            return false;
+
+        // Pass 3: deterministic dependency order.
+        const ordered = {};
+        for (const key of root._radiusMutationOrder) {
+            if (Object.prototype.hasOwnProperty.call(normalized, key))
+                ordered[key] = normalized[key];
+        }
+        for (const key in normalized) {
+            if (!Object.prototype.hasOwnProperty.call(normalized, key))
+                continue;
+            if (!Object.prototype.hasOwnProperty.call(ordered, key))
+                ordered[key] = normalized[key];
+        }
+
+        console.info(`[${root.title}] Batch mutation: ${Object.keys(ordered).join(", ") || "(snapshot only)"}`);
+        ThemeManager.updateAndApplyTheme(ordered, saveToDisk === true);
+
+        if (saveToDisk === true)
+            root.saveChanges();
+
+        return true;
     }
 
     function applySingleProperty(key, value, saveToDisk = false) {
-        if (isLoading || !isReady || !theme)
-            return;
+        if (typeof key !== "string" || key.length === 0)
+            return false;
 
-        if (saveToDisk === undefined)
-            saveToDisk = false;
-
-        let data = {};
-        data[key] = value;
-
-        console.info("[" + root.title + "] Applying single property:", key, value);
-
-        // TODO: -> create a function to apply single property
-        ThemeManager.updateAndApplyTheme(data, saveToDisk);
-
-        if (saveToDisk) {
-            root.saveChanges();
-        }
+        const propertiesMap = {};
+        propertiesMap[key] = value;
+        return applyProperties(propertiesMap, saveToDisk);
     }
 
     function resetToDefault() {
+        if (!theme || isLoading)
+            return;
+
         let data = serializeData();
         console.info(`\n========== RESET [${root.title}] ==========`);
         console.info(`[Reset] Serializing ${Object.keys(data).length} keys from component...`);
