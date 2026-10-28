@@ -390,7 +390,7 @@ Singleton {
             fgColor: colors.fg,
             timeout: root._sysOsdTimeout,
             changeW: false,
-            playTone: true,
+            playTone: !MusicService.isPlaying,
             tone: App.assets.audio.notifySoft
         });
     }

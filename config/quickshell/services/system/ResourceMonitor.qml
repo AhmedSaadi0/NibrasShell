@@ -15,6 +15,11 @@ QtObject {
     property real vramUsage: 0.0
     property real vramUsedMb: 0.0
     property real vramTotalMb: 0.0
+
+    // استهلاك الطاقة بالواط (Watts) — قيم مطلقة من سكربت المراقبة ولا تُقسم على 100
+    property real cpuPowerW: 0.0
+    property real gpuPowerW: 0.0
+    property real totalPowerW: 0.0
     readonly property real cpuHighThreshold: App.cpuHighLoadThreshold / 100.0
     readonly property real ramHighThreshold: App.ramHighLoadThreshold / 100.0
     readonly property bool isCpuHigh: cpuUsage >= cpuHighThreshold
@@ -304,6 +309,17 @@ QtObject {
                         root.vramUsedMb = metrics.vram_used || 0;
                         root.vramTotalMb = metrics.vram_total || 0;
                     }
+
+                    // الطاقة بالواط: قراءات مطلقة مع فحص أمان للنوع والقيمة
+                    const cpuPwr = (typeof metrics.cpu_pwr === "number" && isFinite(metrics.cpu_pwr)) ? metrics.cpu_pwr : 0.0;
+                    const gpuPwr = (typeof metrics.gpu_pwr === "number" && isFinite(metrics.gpu_pwr)) ? metrics.gpu_pwr : 0.0;
+                    root.cpuPowerW = cpuPwr;
+                    root.gpuPowerW = gpuPwr;
+
+                    // الإجمالي: نستخدم قيمة السكربت إن توفرت، وإلا نحسبها من مجموع المكونات
+                    root.totalPowerW = (typeof metrics.total_pwr === "number" && isFinite(metrics.total_pwr))
+                        ? metrics.total_pwr
+                        : (cpuPwr + gpuPwr);
                 } catch (e) {
                     console.error("[ResourceMonitor] Error parsing JSON:", e, "Data:", data);
                 }

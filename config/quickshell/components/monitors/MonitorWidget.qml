@@ -24,6 +24,21 @@ ColumnLayout {
     // Alias to access the loaded monitor item if needed (e.g., to read its progress value)
     property alias actualMonitor: monitorLoader.item
 
+    // نص إضافي يُلحق بنسبة القيمة (مثل: " · 12W") — اختياري ولا يؤثر على بقية الشاشات
+    property string extraText: ""
+
+    // تحديث نص القيمة بشكل موحّد (النسبة + النص الإضافي)
+    function _refreshValueLabel(item) {
+        valueLabel.text = Math.round(item.value * 100) + "%" + monitorUnitRoot.extraText;
+    }
+
+    // ضمان التفاعل عندما يتغير النص الإضافي دون تغيّر النسبة
+    onExtraTextChanged: {
+        if (monitorLoader.item && "value" in monitorLoader.item) {
+            monitorUnitRoot._refreshValueLabel(monitorLoader.item);
+        }
+    }
+
     spacing: ThemeManager.selectedTheme.dimensions.spacingSmall / 3
 
     Layout.alignment: Qt.AlignHCenter
@@ -71,10 +86,10 @@ ColumnLayout {
 
             // Update value label now that monitorLoader.item is available
             if ("value" in item) {
-                valueLabel.text = Math.round(item.value * 100) + "%";
+                monitorUnitRoot._refreshValueLabel(item);
                 if (item.valueChanged) {
                     item.valueChanged.connect(function () {
-                        valueLabel.text = Math.round(item.value * 100) + "%";
+                        monitorUnitRoot._refreshValueLabel(item);
                     });
                 }
             }

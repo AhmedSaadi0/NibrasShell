@@ -103,6 +103,12 @@ RowLayout {
             text: Math.round(cpuMonitor.value * 100) + "%"
             color: cpuMonitor.fgNormal
         }
+        // واط المعالج — يظهر فقط عند توفر قراءة أكبر من صفر
+        ValueLabel {
+            visible: SystemService.cpuPowerW > 0
+            text: Math.round(SystemService.cpuPowerW) + "W"
+            color: cpuMonitor.fgNormal
+        }
     }
 
     VerticalDivider {
@@ -121,6 +127,12 @@ RowLayout {
     //         text: Math.round(gpuMonitor.value * 100) + "%"
     //         color: gpuMonitor.fgNormal
     //     }
+    //     // واط كرت الشاشة — يظهر فقط عند توفر قراءة أكبر من صفر
+    //     ValueLabel {
+    //         visible: SystemService.gpuPowerW > 0
+    //         text: Math.round(SystemService.gpuPowerW) + "W"
+    //         color: gpuMonitor.fgNormal
+    //     }
     // }
 
     // --- 5. VRAM ---
@@ -134,6 +146,31 @@ RowLayout {
         ValueLabel {
             text: Math.round(vramMonitor.value * 100) + "%"
             color: vramMonitor.fgNormal
+        }
+    }
+
+    // --- 6. Total Power ---
+    // قراءة مدمجة لإجمالي استهلاك الطاقة — تظهر فقط عند توفر قراءة أكبر من صفر
+    // VerticalDivider {
+    //     visible: SystemService.totalPowerW > 0
+    //     Layout.alignment: Qt.AlignVCenter
+    // }
+
+    Row {
+        spacing: 5
+        Layout.alignment: Qt.AlignVCenter
+        visible: SystemService.totalPowerW > 0
+
+        Text {
+            text: ""
+            // font.family: ThemeManager.selectedTheme.typography.iconFont
+            font.pixelSize: ThemeManager.selectedTheme.typography.small
+            color: ThemeManager.selectedTheme.colors.tertiary
+        }
+
+        ValueLabel {
+            text: Math.round(SystemService.totalPowerW) + "W"
+            color: ThemeManager.selectedTheme.colors.tertiary
         }
     }
 }

@@ -5,6 +5,7 @@ import QtQuick.Layouts
 
 import "root:/components/monitors" // For Tempreture, Battery, Ram, Cpu
 import "root:/themes"
+import "root:/services" // For SystemService (power readouts)
 
 import "root:/config/EventNames.js" as Events
 import "root:/config/ConstValues.js" as C
@@ -147,6 +148,7 @@ HeaderCard {
             MonitorWidget {
                 Layout.preferredWidth: root.monitorWidth
                 title: qsTr("CPU")
+                extraText: SystemService.cpuPowerW > 0 ? " · " + Math.round(SystemService.cpuPowerW) + "W" : ""
                 monitorComponent: cpuComponent
                 monitorItemWidth: root.monitorWidth
                 monitorItemHeight: root.monitorHeight
@@ -161,6 +163,7 @@ HeaderCard {
             MonitorWidget {
                 Layout.preferredWidth: root.monitorWidth
                 title: qsTr("GPU")
+                extraText: SystemService.gpuPowerW > 0 ? " · " + Math.round(SystemService.gpuPowerW) + "W" : ""
                 monitorComponent: gpuComponent
                 monitorItemWidth: root.monitorWidth
                 monitorItemHeight: root.monitorHeight
