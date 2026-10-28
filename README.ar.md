@@ -15,11 +15,11 @@
 <!-- <img src="docs/assets/github-preview.webp" alt="معاينة NibrasShell" width="100%"> -->
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=zq46Nw_rijE">
-    <img src="https://img.youtube.com/vi/zq46Nw_rijE/maxresdefault.jpg" alt="NibrasShell Demo" width="100%">
+  <a href="https://www.youtube.com/watch?v=dcPbmKj3RA8">
+    <img src="https://img.youtube.com/vi/dcPbmKj3RA8/maxresdefault.jpg" alt="NibrasShell Demo" width="100%">
   </a>
   <br>
-  <a href="https://www.youtube.com/watch?v=zq46Nw_rijE">
+  <a href="https://www.youtube.com/watch?v=dcPbmKj3RA8">
     <b>▶️ شاهد فيديو عن الواجهه على YouTube</b>
   </a>
 </p>
