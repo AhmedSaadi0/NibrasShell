@@ -28,8 +28,7 @@
 
 ## 🌟 Why NibrasShell?
 
-**Not just a hobby, and certainly not a product.**  
-I built this interface simply because I genuinely enjoy shaping and having full control over my system—exactly the way I want.
+I built this interface because I genuinely enjoy shaping and having full control over my system—exactly the way I want.
 
 ---
 
