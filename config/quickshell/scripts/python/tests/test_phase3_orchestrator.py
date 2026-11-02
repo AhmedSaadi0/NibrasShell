@@ -44,6 +44,8 @@ import os
 import sys
 import time
 import unittest
+from unittest import mock
+
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
@@ -1151,6 +1153,104 @@ class TestRealSubprocessWrapper(unittest.TestCase):
     def test_read_file_cap(self):
         with self.assertRaises(OSError):
             self.runner.read_file(__file__, max_bytes=10)
+
+
+# ═══ Phase 4.1 — subprocess pipe/resource cleanup ═══════════════════════════
+
+
+class TestSpawnPipeCleanup(unittest.TestCase):
+    """Phase 4.1 (HIGH) — ``tools._spawn_run`` must close BOTH original pipe
+    handles on every exit path and never leave a spawned child behind.
+
+    The wrapper is driven through a Popen spy so the real parent-side handles
+    can be inspected after return; the Phase-4 tail closed only the
+    still-active ``fds`` subset (empty after both pipes reached EOF), leaking
+    unclosed BufferedReaders on the normal path."""
+
+    def _spy_run(
+        self,
+        argv,
+        deadline_s=2.0,
+        kill_grace_s=0.3,
+        max_stdout=T.TOOL_MAX_STDOUT_BYTES,
+        max_stderr=T.TOOL_MAX_STDERR_BYTES,
+    ):
+        real = T.subprocess.Popen
+        spawned = []
+
+        def spy(*args, **kwargs):
+            proc = real(*args, **kwargs)
+            spawned.append(proc)
+            return proc
+
+        with mock.patch.object(T.subprocess, "Popen", side_effect=spy):
+            outcome = T._spawn_run(
+                argv, deadline_s, kill_grace_s, max_stdout, max_stderr
+            )
+        self.assertEqual(len(spawned), 1)
+        return outcome, spawned[0]
+
+    def _assert_pipes_closed(self, proc):
+        self.assertTrue(proc.stdout.closed)
+        self.assertTrue(proc.stderr.closed)
+
+    def test_both_pipes_closed_after_normal_completion(self):
+        outcome, proc = self._spy_run([sys.executable, "-c", "print('done')"])
+        self.assertEqual(outcome.status, T.ST_COMPLETED)
+        self.assertEqual(outcome.ec, 0)
+        self._assert_pipes_closed(proc)
+        self.assertIsNotNone(proc.poll())  # reaped
+
+    def test_both_pipes_closed_after_timeout(self):
+        outcome, proc = self._spy_run(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            deadline_s=0.4,
+            kill_grace_s=0.3,
+        )
+        self.assertEqual(outcome.status, T.ST_TIMEOUT)
+        self._assert_pipes_closed(proc)
+        self.assertIsNotNone(proc.poll())
+        self.assertIsNotNone(proc.returncode)
+
+    def test_both_pipes_closed_after_overflow(self):
+        outcome, proc = self._spy_run(
+            [sys.executable, "-c", "while True: print('z' * 4096, flush=True)"],
+            deadline_s=2.0,
+            kill_grace_s=0.3,
+            max_stdout=512,
+            max_stderr=512,
+        )
+        self.assertEqual(outcome.status, T.ST_OVERFLOW)
+        self.assertLessEqual(len(outcome.stdout), 512)
+        self._assert_pipes_closed(proc)
+        self.assertIsNotNone(proc.poll())
+
+    def test_read_loop_error_terminates_reaps_and_closes(self):
+        real = T.subprocess.Popen
+        spawned = []
+
+        def spy(*args, **kwargs):
+            proc = real(*args, **kwargs)
+            spawned.append(proc)
+            return proc
+
+        with mock.patch.object(T.subprocess, "Popen", side_effect=spy):
+            with mock.patch.object(
+                T.select, "select", side_effect=ValueError("read loop boom")
+            ):
+                with self.assertRaises(ValueError):
+                    T._spawn_run(
+                        [sys.executable, "-c", "import time; time.sleep(30)"],
+                        5.0,
+                        0.3,
+                        T.TOOL_MAX_STDOUT_BYTES,
+                        T.TOOL_MAX_STDERR_BYTES,
+                    )
+        self.assertEqual(len(spawned), 1)
+        proc = spawned[0]
+        self._assert_pipes_closed(proc)
+        self.assertIsNotNone(proc.poll())  # terminated + reaped by finally
+        self.assertIsNotNone(proc.returncode)
 
 
 # ═══ orchestrator end‑to‑end ═════════════════════════════════════════════════

@@ -16,10 +16,14 @@ Policy layers added ON TOP of the Phase-3 contract validation (first
 mismatch rejects; the contract's structural/reason codes are reused
 verbatim so Phase-3 behavior is stable):
 
-1. §11.2 event-transport gate — kernel/driver records (and AUDIT records
-   without any trusted identity claim) ground read-only evidence at most;
-   package/service-targeting advice is refused ``event_not_targetable`` and
-   the response is reduced to labeled explanation.
+1. §11.2 event-transport gate — Phase 4.1 default-deny: only the stdout/
+   stderr family, syslog and journal-native records may reach target advice.
+   KERNEL/DRIVER never carry a usable subject; AUDIT subject mapping is an
+   explicit R1 uncertainty (§8.1-A) — neither ``_AUDIT_LOGINUID``/
+   ``_AUDIT_SESSION`` nor body text is a verified basis; UNKNOWN/missing
+   values fail closed. No unrelated verified record elsewhere in the
+   incident can unlock a non-targetable transport. Refusal uses
+   ``event_not_targetable`` and reduces the response to labeled explanation.
 2. §11.2 registry-wide unresolved-evidence gate (unknown/ambiguous/
    conflicting/stale/… statuses) — recorded verbatim by the incident, never
    upgraded. Target-carrying advice is refused with
@@ -28,7 +32,11 @@ verbatim so Phase-3 behavior is stable):
    recorded time scope for the container template; explicitly attached
    event-time/current-state status + resolved manager scope for the unit
    template; null binding plus §11.2 routing for the update-review template).
-4. Backend template rendering ACROSS the closed registry: model prose is
+4. Phase 4.1 evidence-to-target linkage — a target's recorded time-scope
+   family must have a backing item in THIS incident's backend ledger; a
+   verified record for another dimension, a model assertion or a missing
+   file elsewhere never authorizes the proposed target (``evidence_not_linked``).
+5. Backend template rendering ACROSS the closed registry: model prose is
    never interpolated; the operational text is the backend's own.
 
 Guarantees (AC #16): the status vocabulary is exactly the closed set and no
@@ -61,15 +69,24 @@ S_ANALYSIS_UNVERIFIED = _contract.STATUS_ANALYSIS_UNVERIFIED
 # the contract keeps its own minimal Phase-3 subset.
 BLOCKING_STATUSES = _contract.UNRESOLVED_EVIDENCE_STATUSES
 
-# transports whose records typically carry NO process subject in the
-# journald-credential sense (§8.1-A / §11.2): read-only evidence grounds at
-# most; only trusted resolved claims may unlock target advice.
-_NO_SUBJECT_TRANSPORTS = frozenset({"KERNEL", "DRIVER", "AUDIT"})
+# Phase 4.1 DEFAULT-DENY (§8.1-A / §11.2): only these transports may reach
+# target-carrying advice. KERNEL/DRIVER records carry no usable process
+# subject; AUDIT has no supported subject mapping in R1 (neither
+# ``_AUDIT_LOGINUID``/``_AUDIT_SESSION`` nor body text establishes the
+# audited subject); UNKNOWN/missing/unrecognized values fail closed. The
+# registry is deliberately NOT consulted — a trusted record elsewhere in
+# the incident never converts a non-targetable event into a targetable one.
+_TARGETABLE_TRANSPORTS = frozenset({"STDOUT_STDERR", "SYSLOG", "JOURNAL_NATIVE"})
+_TRANSPORT_ALIASES = {"STDOUT/STDERR": "STDOUT_STDERR"}
 
 # reason codes (reused from the contract where shared; policy-only ones
 # carry an `event_not_targetable`-style name and never collide with the
 # contract's set)
 R_EVENT_NOT_TARGETABLE = "event_not_targetable"
+# Phase 4.1: the target's own time-scope family has no backing item in this
+# incident's backend ledger — evidence for another dimension (or a model
+# assertion) does not authorize the proposed target.
+R_EVIDENCE_NOT_LINKED = "evidence_not_linked"
 REDUCTION_NOTE = (
     "target-carrying advice refused by policy; the response is reduced to "
     "labeled explanation only (no actionable content)"
@@ -90,38 +107,32 @@ def evaluate_tool_request(payload: Any, registry: Any) -> dict[str, Any]:
 def _transport_of(incident: dict) -> str:
     source = incident.get("source")
     value = source.get("event_transport") if isinstance(source, dict) else None
-    return str(value).strip().upper() if isinstance(value, str) else ""
+    if not isinstance(value, str):
+        return ""
+    normalized = value.strip().upper()
+    return _TRANSPORT_ALIASES.get(normalized, normalized)
 
 
-def _resolved_claims_exist(registry: Any) -> bool:
-    for record in registry.refs.values():
-        status = record.get("status") if "status" in record else record.get("outcome")
-        if status in ("VERIFIED", "CURRENT_RUNTIME_VERIFIED", "EVENT_TIME_ATTESTED"):
-            return True
-    return False
+def _event_gate(incident: dict) -> tuple[bool, list[str]]:
+    """§11.2 transport rows — Phase 4.1 default-deny (§8.1-A).
 
+    Target-carrying advice requires a transport whose records can carry a
+    subject identity in R1. KERNEL/DRIVER never do; AUDIT has no supported
+    subject mapping (``_AUDIT_LOGINUID``/``_AUDIT_SESSION`` and body text are
+    not a verified basis), so audit interaction stays read-only; UNKNOWN,
+    missing or unrecognized values fail closed. The registry is NOT
+    consulted: a trusted record elsewhere in the incident must not unlock
+    target advice for a non-targetable event.
 
-def _event_gate(incident: dict, registry: Any) -> tuple[bool, list[str]]:
-    """§11.2 transport rows: kernel/driver/audit interactions carry no
-    usable subject identity claim in R1 unless a *trusted* resolved claim
-    exists (AUDIT body text is userspace content — never a VERIFIED basis,
-    §8.1-A). Returns (target_advice_allowed, notes)."""
+    Returns (target_advice_allowed, notes).
+    """
     transport = _transport_of(incident)
-    notes: list[str] = []
-    if transport not in _NO_SUBJECT_TRANSPORTS:
-        return True, notes
-    trusted = _resolved_claims_exist(registry)
-    if trusted:
-        notes.append(
-            f"transport {transport} with a trusted resolved claim — target "
-            "advice may proceed through the per-template evidence gates"
-        )
-        return True, notes
-    notes.append(
-        f"transport {transport} carries no trusted identity claim in this "
-        "incident (read-only evidence grounds at most, §11.2)"
-    )
-    return False, notes
+    if transport in _TARGETABLE_TRANSPORTS:
+        return True, [f"transport {transport}: per-template evidence gates apply"]
+    return False, [
+        f"transport {transport or '<missing>'!r} is not targetable in Release 1 "
+        "(§11.2 / §8.1-A): read-only evidence and labeled explanation only"
+    ]
 
 
 def _record_with_ref(registry: Any, ref: str, incident: dict) -> dict[str, Any] | None:
@@ -144,6 +155,47 @@ def _record_with_ref(registry: Any, ref: str, incident: dict) -> dict[str, Any] 
                 if isinstance(value, str) and value:
                     injected.setdefault(key, value)
     return injected
+
+
+# §8.5 time-scope families: an event-time record can only be linked to an
+# event-time ledger item; a current-state record only to current-state
+# evidence. This is the smallest backend-derivable relationship — the model
+# never supplies it (``findings[].evidence_refs`` is display-only prose).
+_CURRENT_STATE_SCOPES = frozenset({"current_state", "current_runtime"})
+
+
+def _time_family(scope: Any) -> str:
+    if not isinstance(scope, str):
+        return ""
+    value = scope.strip().lower()
+    if value.startswith("event_time"):
+        return "event_time"
+    if value in _CURRENT_STATE_SCOPES or value.startswith("current_runtime"):
+        return "current_state"
+    return ""
+
+
+def _linked_evidence_ids(record: dict[str, Any], incident: dict) -> list[str]:
+    """Evidence ids from THIS incident's backend ledger that share the
+    target record's time-scope family (§8.5).
+
+    A target whose family has no ledger item has no supporting evidence
+    entry: a verified record for another dimension elsewhere in the incident
+    is not linkage, and a model-cited ref is never consulted here.
+    """
+    family = _time_family(record.get("time_scope"))
+    ledger = incident.get("evidence_refs")
+    if not family or not isinstance(ledger, list):
+        return []
+    linked: list[str] = []
+    for item in ledger:
+        if (
+            isinstance(item, dict)
+            and isinstance(item.get("id"), str)
+            and _time_family(item.get("time_scope")) == family
+        ):
+            linked.append(item["id"])
+    return linked
 
 
 def evaluate_diagnosis(payload: Any, registry: Any, incident: dict) -> dict[str, Any]:
@@ -206,7 +258,7 @@ def evaluate_diagnosis(payload: Any, registry: Any, incident: dict) -> dict[str,
             ],
         )
     else:
-        gate_ok, gate_notes = _event_gate(incident, registry)
+        gate_ok, gate_notes = _event_gate(incident)
     notes.extend(gate_notes)
     if not gate_ok:
         notes.append(REDUCTION_NOTE)
@@ -271,6 +323,34 @@ def evaluate_diagnosis(payload: Any, registry: Any, incident: dict) -> dict[str,
             "template": None,
             "analysis": analysis,
         }
+
+    # 4b. Phase 4.1 evidence-to-target linkage: the target's own time-scope
+    #     family must have a backing item in THIS incident's backend ledger.
+    #     A verified record for another dimension, a model assertion or a
+    #     missing file elsewhere never authorizes the proposed target.
+    if target_ref is not None:
+        scope = record.get("time_scope") if record else None
+        if not _linked_evidence_ids(record or {}, incident):
+            notes.append(
+                "no incident evidence item is linked to this target's "
+                f"recorded time scope {scope!r}; a verified record for "
+                "another dimension does not authorize it"
+            )
+            notes.append(REDUCTION_NOTE)
+            decision = _contract.guidance_decision(
+                "rd-1",
+                target_ref,
+                code,
+                S_POLICY_REJECTED,
+                [R_EVIDENCE_NOT_LINKED],
+                notes,
+            )
+            return {
+                "status": S_POLICY_REJECTED,
+                "decision": decision,
+                "template": None,
+                "analysis": analysis,
+            }
 
     # 5. backend rendering — the ONLY path that produces operational text
     template = _templates.render(code, record, incident, registry)

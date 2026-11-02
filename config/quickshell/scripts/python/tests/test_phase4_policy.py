@@ -307,13 +307,16 @@ class TestTemplateRegistry(unittest.TestCase):
 
 
 class TestEventGate(unittest.TestCase):
-    """§11.2 — non-subjectable transports refuse advice, keep explanation."""
+    """§11.2 — Phase 4.1 default-deny: only stdout/stderr family, syslog and
+    journal-native records reach target advice. Kernel/driver/audit and
+    unknown/missing transports fail closed REGARDLESS of any trusted record
+    elsewhere in the incident (the Phase-4 smoke bypass)."""
 
-    def _incident(self, transport):
-        return make_incident(
-            **NO_CLAIMS,
-            source={"boot_id": "b0", "cursor": CURSOR, "event_transport": transport},
-        )
+    def _incident(self, transport, **claims):
+        source = {"boot_id": "b0", "cursor": CURSOR}
+        if transport is not None:
+            source["event_transport"] = transport
+        return make_incident(**claims, source=source)
 
     def _update_payload(self):
         return diagnosis(
@@ -325,41 +328,80 @@ class TestEventGate(unittest.TestCase):
             }
         )
 
+    def _assert_refused(self, transport, payload, **claims):
+        incident = self._incident(transport, **claims)
+        reg = C.RefRegistry.from_incident(incident)
+        res = E.evaluate_diagnosis(payload, reg, incident)
+        self.assertEqual(res["status"], C.STATUS_REJECTED, transport)
+        self.assertEqual(
+            res["decision"]["reason_codes"], [E.R_EVENT_NOT_TARGETABLE], transport
+        )
+        self.assertIsNone(res["template"], transport)
+        self.assertIn(E.REDUCTION_NOTE, res["decision"]["details"], transport)
+        return res
+
     def test_kernel_refuses_advice_with_reduction_note(self):
+        self._assert_refused("KERNEL", self._update_payload(), **NO_CLAIMS)
+
+    def test_kernel_with_unrelated_verified_container_still_refused(self):
+        # Regression for the Phase-4 smoke bypass: a VERIFIED container
+        # record elsewhere in the incident used to unlock kernel advice.
         incident = self._incident("KERNEL")
         reg = C.RefRegistry.from_incident(incident)
-        res = E.evaluate_diagnosis(self._update_payload(), reg, incident)
+        self.assertIn("cont_ref_1", reg.refs)
+        self.assertEqual(reg.refs["cont_ref_1"]["status"], "VERIFIED")
+        res = E.evaluate_diagnosis(diagnosis(), reg, incident)
         self.assertEqual(res["status"], C.STATUS_REJECTED)
         self.assertEqual(res["decision"]["reason_codes"], [E.R_EVENT_NOT_TARGETABLE])
         self.assertIsNone(res["template"])
-        self.assertIn(E.REDUCTION_NOTE, res["decision"]["details"])
 
-    def test_driver_refuses_advice(self):
-        incident = self._incident("DRIVER")
+    def test_driver_with_unrelated_verified_unit_still_refused(self):
+        incident = self._incident("DRIVER", container_association=None)
         reg = C.RefRegistry.from_incident(incident)
-        res = E.evaluate_diagnosis(self._update_payload(), reg, incident)
-        self.assertEqual(res["status"], C.STATUS_REJECTED)
-        self.assertIsNone(res["template"])
-
-    def test_audit_without_trusted_claim_refuses_advice(self):
-        incident = self._incident("AUDIT")
-        reg = C.RefRegistry.from_incident(incident)
-        self.assertFalse(E._resolved_claims_exist(reg))
-        res = E.evaluate_diagnosis(self._update_payload(), reg, incident)
+        self.assertEqual(reg.refs["unit_ref_1"]["status"], "EVENT_TIME_ATTESTED")
+        res = E.evaluate_diagnosis(
+            diagnosis(ref="unit_ref_1", code="G_REVIEW_UNIT_STATE"), reg, incident
+        )
         self.assertEqual(res["status"], C.STATUS_REJECTED)
         self.assertEqual(res["decision"]["reason_codes"], [E.R_EVENT_NOT_TARGETABLE])
 
-    def test_audit_with_verified_claim_advice_allowed(self):
-        incident = make_incident(
-            source={"boot_id": "b0", "cursor": CURSOR, "event_transport": "AUDIT"}
+    def test_audit_never_targets_from_loginuid_or_session(self):
+        # AUDIT identity fields and body text are not a subject mapping in
+        # R1 (§8.1-A): even a VERIFIED claim elsewhere cannot unlock advice.
+        incident = self._incident(
+            "AUDIT",
+            referenced_subject={"pid": 555, "comm": "journalctl", "loginuid": 1000},
+            event={
+                "message_hash": "d" * 64,
+                "time_utc_us": 1770000000000000,
+                "message_trunc": "container webui started by uid 1000 (_AUDIT_SESSION=3)",
+            },
         )
         reg = C.RefRegistry.from_incident(incident)
-        self.assertTrue(E._resolved_claims_exist(reg))
-        res = E.evaluate_diagnosis(self._update_payload(), reg, incident)
-        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
+        res = E.evaluate_diagnosis(diagnosis(), reg, incident)
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVENT_NOT_TARGETABLE])
+        self.assertIsNone(res["template"])
+
+    def test_unknown_transport_refused(self):
+        self._assert_refused("UNKNOWN", diagnosis())
+
+    def test_unrecognized_transport_refused(self):
+        self._assert_refused("d-bus", diagnosis())
+
+    def test_missing_transport_refused(self):
+        self._assert_refused(None, diagnosis())
 
     def test_explain_only_survives_every_transport(self):
-        for transport in ("KERNEL", "DRIVER", "AUDIT"):
+        for transport in (
+            "KERNEL",
+            "DRIVER",
+            "AUDIT",
+            "UNKNOWN",
+            "d-bus",
+            None,
+            "stdout/stderr",
+        ):
             incident = self._incident(transport)
             reg = C.RefRegistry.from_incident(incident)
             res = E.evaluate_diagnosis(
@@ -380,17 +422,137 @@ class TestEventGate(unittest.TestCase):
             self.assertIsNone(res["template"]["target_ref"])
 
     def test_stdout_family_unaffected(self):
-        incident = self._incident("stdout/stderr")
+        incident = self._incident("stdout/stderr", **NO_CLAIMS)
         reg = C.RefRegistry.from_incident(incident)
         res = E.evaluate_diagnosis(self._update_payload(), reg, incident)
         self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
         self.assertIn("generic", res["template"]["lines"][0])
 
-    def test_transport_normalization_is_case_insensitive(self):
-        incident = self._incident("kernel")
+    def test_syslog_and_journal_native_reach_template_gates(self):
+        for transport in ("SYSLOG", "JOURNAL_NATIVE"):
+            incident = self._incident(transport, **NO_CLAIMS)
+            reg = C.RefRegistry.from_incident(incident)
+            res = E.evaluate_diagnosis(self._update_payload(), reg, incident)
+            self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED, transport)
+
+    def test_targetable_transport_still_obeys_template_gates(self):
+        # Pass-through is not approval: a GONE container on SYSLOG is still
+        # refused by the §11.1 minimum-evidence gate, not by the transport.
+        incident = self._incident(
+            "SYSLOG",
+            container_association={
+                "ref": "cont_ref_1",
+                "runtime": "podman",
+                "status": "GONE",
+                "time_scope": "current_state",
+                "full_id": FULL_ID,
+                "name": "webui",
+                "image": "ghcr.io/open-webui",
+            },
+        )
         reg = C.RefRegistry.from_incident(incident)
-        res = E.evaluate_diagnosis(self._update_payload(), reg, incident)
+        res = E.evaluate_diagnosis(diagnosis(), reg, incident)
         self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertIn(C.R_TARGET_EVIDENCE_UNRESOLVED, res["decision"]["reason_codes"])
+
+    def test_transport_normalization_is_case_insensitive(self):
+        self._assert_refused("kernel", diagnosis())
+
+
+class TestEvidenceLinkage(unittest.TestCase):
+    """Phase 4.1 — the proposed target must be linked to incident evidence.
+
+    The relationship is backend-derived from the incident ledger (§8.5
+    time-scope families); model-cited ``findings[].evidence_refs`` is
+    display-only prose and never consulted for authorization."""
+
+    def _evaluate(self, incident, payload, findings=None):
+        reg = C.RefRegistry.from_incident(incident)
+        return E.evaluate_diagnosis(payload, reg, incident)
+
+    def test_container_with_only_event_time_ledger_refused(self):
+        incident = make_incident(
+            evidence_refs=[
+                {
+                    "id": "e1",
+                    "origin": "journal_trusted",
+                    "strength": "strong",
+                    "time_scope": "event_time",
+                    "desc": "trusted fields",
+                }
+            ]
+        )
+        res = self._evaluate(incident, diagnosis())
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+        self.assertIsNone(res["template"])
+        self.assertIn(E.REDUCTION_NOTE, res["decision"]["details"])
+
+    def test_unit_with_only_current_state_ledger_refused(self):
+        incident = make_incident(
+            container_association=None,
+            evidence_refs=[
+                {
+                    "id": "e2",
+                    "origin": "runtime_query",
+                    "strength": "strong",
+                    "time_scope": "current_state",
+                    "desc": "podman inspect",
+                }
+            ],
+        )
+        findings = [
+            {
+                "id": "f1",
+                "text": "runtime inspection present",
+                "evidence_refs": ["e2"],
+                "severity": "warning",
+            }
+        ]
+        res = self._evaluate(
+            incident,
+            diagnosis(ref="unit_ref_1", code="G_REVIEW_UNIT_STATE", findings=findings),
+        )
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+
+    def test_model_cited_evidence_of_another_dimension_does_not_authorize(self):
+        incident = make_incident(
+            evidence_refs=[
+                {
+                    "id": "e1",
+                    "origin": "journal_trusted",
+                    "strength": "strong",
+                    "time_scope": "event_time",
+                    "desc": "trusted fields",
+                }
+            ]
+        )
+        findings = [
+            {
+                "id": "f1",
+                "text": "the container is verified by e1",
+                "evidence_refs": ["e1"],
+                "severity": "warning",
+            }
+        ]
+        res = self._evaluate(incident, diagnosis(findings=findings))
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+
+    def test_claim_without_any_ledger_refused(self):
+        incident = make_incident(evidence_refs=[])
+        res = self._evaluate(incident, diagnosis(findings=[]))
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+
+    def test_family_matched_backend_evidence_validates(self):
+        # Control: the untouched Phase-4 ledger (event_time + current_state)
+        # still authorizes the container through the public path.
+        incident = make_incident()
+        res = self._evaluate(incident, diagnosis())
+        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
+        self.assertEqual(res["template"]["guidance_code"], "G_REVIEW_CONTAINER_SOT")
 
 
 # ─── §11.1 container minimum-evidence gate ──────────────────────────────────
@@ -414,7 +576,9 @@ class TestContainerTemplateGate(unittest.TestCase):
         self.assertIn("source-of-truth", joined)
         self.assertIn("Quadlet", joined)
         self.assertIn("compose-style", joined)
-        self.assertIn("manually", joined)
+        self.assertIn("source of truth remains unknown", joined)
+        self.assertIn("Do not assume a manual start", joined)
+        self.assertNotIn("started manually", joined)
 
     def test_verified_event_time_association_renders(self):
         incident = make_incident(
@@ -767,12 +931,51 @@ class TestHostActionOnContainer(unittest.TestCase):
         self.assertEqual(res["status"], C.STATUS_REJECTED)
         self.assertIn(C.R_TARGET_NOT_FROM_BACKEND, res["decision"]["reason_codes"])
 
-    def test_rendered_sot_review_mentions_runtime_command_caveat(self):
+    def test_rendered_sot_review_keeps_source_unknown_and_no_command(self):
         res = E.evaluate_diagnosis(diagnosis(), self.reg, self.incident)
         joined = "\n".join(res["template"]["lines"])
-        self.assertIn("direct runtime command", joined)
+        self.assertNotIn("direct runtime command", joined)
+        self.assertNotIn("started manually", joined)
+        self.assertIn("source of truth remains unknown", joined)
         hits = check(res["template"], HOST_TOKENS)
         self.assertEqual(hits, [])
+
+
+class TestContainerSourceOfTruthWording(unittest.TestCase):
+    """Phase 4.1 (MEDIUM) — absence of a creation source is not a manual-
+    launch conclusion: ownership stays unknown, scanned order is preserved."""
+
+    def _render(self, incident=None):
+        incident = make_incident() if incident is None else incident
+        reg = C.RefRegistry.from_incident(incident)
+        res = E.evaluate_diagnosis(diagnosis(), reg, incident)
+        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
+        return "\n".join(res["template"]["lines"])
+
+    def test_missing_definitions_do_not_conclude_manual_launch(self):
+        joined = self._render()
+        self.assertNotIn("started manually", joined)
+        self.assertNotIn("direct runtime command", joined)
+        self.assertNotIn("manual ownership", joined)
+
+    def test_ownership_status_is_explicitly_unknown(self):
+        joined = self._render()
+        self.assertIn("no container creation source was identified", joined)
+        self.assertIn("source of truth remains unknown", joined)
+
+    def test_no_recreation_recommendation_from_absence_alone(self):
+        joined = self._render()
+        self.assertIn("do not recommend recreation based on this absence alone", joined)
+
+    def test_quadruple_scan_order_preserved(self):
+        joined = self._render()
+        positions = [
+            joined.index("Quadlet"),
+            joined.index("systemd units"),
+            joined.index("compose-style"),
+            joined.index("If none of these is found"),
+        ]
+        self.assertEqual(positions, sorted(positions))
 
 
 # ─── AC #5 — failed inspection never implies verified ───────────────────────

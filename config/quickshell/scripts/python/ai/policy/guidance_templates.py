@@ -155,9 +155,10 @@ _STATIC_LINES: dict[str, list[str]] = {
         "container runtime directly.",
         "3. Check for compose-style definition files in conventional "
         "project locations.",
-        "4. If none of these exist, the container was started manually by a "
-        "direct runtime command — recreation decisions need manual "
-        "verification first.",
+        "4. If none of these is found, no container creation source was "
+        "identified in the inspected locations — the container's source of "
+        "truth remains unknown. Do not assume a manual start, and do not "
+        "recommend recreation based on this absence alone.",
         "The recorded workload process identity stays independent and "
         "unverified; review stays container-scoped.",
     ],

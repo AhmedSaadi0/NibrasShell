@@ -203,61 +203,76 @@ def _spawn_run(
             overflow = True
         return True
 
-    while fds:  # deadline / cap / every-pipe-EOF are the only ways out
-        time_left = deadline - time.monotonic()
-        if time_left <= 0:
-            timed_out = True
-            break
-        try:
-            readable, _, _ = select.select(fds, [], [], min(time_left, 0.05))
-        except InterruptedError:
-            continue
-        except OSError:
-            break
-        read_progress = False
-        for fd in readable:
-            keep = _absorb(fd)
-            if keep:
-                read_progress = True
+    try:
+        while fds:  # deadline / cap / every-pipe-EOF are the only ways out
+            time_left = deadline - time.monotonic()
+            if time_left <= 0:
+                timed_out = True
+                break
+            try:
+                readable, _, _ = select.select(fds, [], [], min(time_left, 0.05))
+            except InterruptedError:
+                continue
+            except OSError:
+                break
+            read_progress = False
+            for fd in readable:
+                keep = _absorb(fd)
+                if keep:
+                    read_progress = True
+                else:
+                    fds = tuple(f for f in fds if f is not fd)  # EOF: drop the pipe
+            if overflow:
+                break
+            if proc.poll() is not None and not read_progress:
+                # child exited and no pipe delivered data this pass — EOF drains
+                # to empty one iteration later and the loop ends by itself
+                continue
+
+        if overflow or timed_out:
+            ec, hard = _terminate(proc, kill_grace_s)
+            if overflow:
+                outcome.status = ST_OVERFLOW
+                outcome.notes.append(
+                    f"stdout cap reached ({max_stdout} bytes) — collection stopped, "
+                    "process group terminated (backend wrapper)"
+                )
             else:
-                fds = tuple(f for f in fds if f is not fd)  # EOF: drop the pipe
-        if overflow:
-            break
-        if proc.poll() is not None and not read_progress:
-            # child exited and no pipe delivered data this pass — EOF drains
-            # to empty one iteration later and the loop ends by itself
-            continue
-
-    if overflow or timed_out:
-        ec, hard = _terminate(proc, kill_grace_s)
-        if overflow:
-            outcome.status = ST_OVERFLOW
-            outcome.notes.append(
-                f"stdout cap reached ({max_stdout} bytes) — collection stopped, "
-                "process group terminated (backend wrapper)"
-            )
+                outcome.status = ST_TIMEOUT
+                outcome.notes.append(
+                    f"deadline hit ({deadline_s:g}s) back — terminate="
+                    f"{'SIGKILL' if hard else 'SIGTERM'}, exit reclaimed"
+                )
         else:
-            outcome.status = ST_TIMEOUT
-            outcome.notes.append(
-                f"deadline hit ({deadline_s:g}s) back — terminate="
-                f"{'SIGKILL' if hard else 'SIGTERM'}, exit reclaimed"
-            )
-    else:
-        ec = proc.returncode
+            ec = proc.returncode
 
-    outcome.ec = ec
-    outcome.stdout = bytes(collected[proc.stdout])
-    stderr_bytes = bytes(collected[proc.stderr])
-    outcome.stderr = stderr_bytes[:TOOL_MAX_STDERR_BYTES]
-    if len(stderr_bytes) > TOOL_MAX_STDERR_BYTES:
-        outcome.truncated = True
-        outcome.notes.append("stderr capped at 32 KiB (§10.3)")
-    for fd in fds:
-        try:
-            fd.close()
-        except OSError:
-            pass
-    return outcome
+        outcome.ec = ec
+        outcome.stdout = bytes(collected[proc.stdout])
+        stderr_bytes = bytes(collected[proc.stderr])
+        outcome.stderr = stderr_bytes[:TOOL_MAX_STDERR_BYTES]
+        if len(stderr_bytes) > TOOL_MAX_STDERR_BYTES:
+            outcome.truncated = True
+            outcome.notes.append("stderr capped at 32 KiB (§10.3)")
+        return outcome
+    finally:
+        # Phase 4.1 — the ORIGINAL parent-side pipes are always closed, even
+        # after they were dropped from ``fds`` at EOF (the Phase-4 tail closed
+        # only the still-active subset, leaking unclosed BufferedReaders on
+        # the normal path). This covers success, timeout, overflow,
+        # SIGTERM/SIGKILL, read/select errors and unexpected exceptions.
+        for handle in (proc.stdout, proc.stderr):
+            if handle is not None:
+                try:
+                    handle.close()
+                except OSError:
+                    pass
+        # Never leave a spawned child behind: if it is still alive on any exit
+        # path (including unexpected exceptions), terminate its process group
+        # and reap it. On the normal path it has already exited.
+        if proc.poll() is None:
+            final_ec, _ = _terminate(proc, kill_grace_s)
+            if outcome.ec is None:
+                outcome.ec = final_ec
 
 
 class OsToolCommandRunner:
