@@ -11,6 +11,14 @@ Rectangle {
     property string command: ""
     property string warning: ""
 
+    // [Phase 0 — احتواء أوامر النموذج الوراثية | docs/NibrasShell_AI_Diagnostics_Plan_vFinal.md ‎§13، ‎§16.4]
+    // في هذه المرحلة لا شيء يضع validated = true، لذا كل أمر وارد عبر السلوك القديم
+    // يُعرض معزولاً: زر النسخ مخفي ومُعطَّل، والتحديد اليدوي (Ctrl+C) مقفول،
+    // وشارة "unvalidated (legacy)" ظاهرة مكان الزر. المُهايئ الجديد (مرحلة 5)
+    // وحده من يملأ validated بعد اعتماد العقد nibras.diagnosis/v1.
+    property bool validated: false
+    readonly property bool quarantined: !validated
+
     readonly property var theme: ThemeManager.selectedTheme
 
     // ألوان مميزة مقروءة: تُعمَّق في الوضع الفاتح
@@ -45,13 +53,14 @@ Rectangle {
                 font.family: "Monospace"
                 font.pixelSize: theme.typography.small - 1
                 wrapMode: TextEdit.Wrap
-                selectByMouse: true
+                selectByMouse: root.validated
                 readOnly: true
                 selectionColor: root.accentColor
                 selectedTextColor: theme.colors.onPrimary
             }
 
             Rectangle {
+                visible: root.validated
                 width: 24
                 height: 24
                 radius: theme.dimensions.shapeExtraSmall
@@ -70,6 +79,7 @@ Rectangle {
                     id: copyMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    enabled: root.validated
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         App.dispatchCommand("Copy solution command", ["wl-copy", root.command]);
@@ -82,6 +92,26 @@ Rectangle {
                     id: copyResetTimer
                     interval: 1500
                     onTriggered: copyIcon.text = ""
+                }
+            }
+
+            // [Phase 0] شارة العزل الظاهرة مكان زر النسخ للأوامر المعزولة.
+            Rectangle {
+                visible: root.quarantined
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredHeight: 18
+                Layout.preferredWidth: quarantineLabel.implicitWidth + 12
+                radius: theme.dimensions.shapeExtraSmall
+                color: "transparent"
+                border.color: root.warningColor
+                border.width: 1
+
+                Text {
+                    id: quarantineLabel
+                    anchors.centerIn: parent
+                    text: "unvalidated (legacy)"
+                    color: root.warningColor
+                    font.pixelSize: theme.typography.small - 3
                 }
             }
         }

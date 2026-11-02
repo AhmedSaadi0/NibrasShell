@@ -1,0 +1,28 @@
+{
+  "success": true,
+  "response": {
+    "title": "تحليل إقلاع اصطناعي (fixture)",
+    "summary": "ملخص اصطناعي: حالة إقلاع مرجعية بدون رسائل حقيقية — تُثبّت شكل الرد القديم فقط.",
+    "status_color": "orange",
+    "boot_duration": "Firmware 4.2s + loader 0.9s + kernel 7.3s + userspace 6.1s (synthetic)",
+    "logs": [
+      {
+        "time": "2026-11-02T08:00:01+03:00",
+        "process": "synthetic-daemon[4321]",
+        "message": "synthetic error: unit entered failed state (fixture)",
+        "raw_details": "synthetic raw details line 1 (fixture)"
+      },
+      {
+        "time": "2026-11-02T08:00:09+03:00",
+        "process": "synthetic-app[51200]",
+        "message": "synthetic warning: reconnect loop (fixture)",
+        "raw_details": "synthetic raw details line 2 (fixture)"
+      }
+    ]
+  },
+  "updated_history": [
+    { "role": "user", "content": "synthetic boot analysis request (fixture)" },
+    { "role": "assistant", "content": "synthetic boot analysis response (fixture)" }
+  ],
+  "error": null
+}
