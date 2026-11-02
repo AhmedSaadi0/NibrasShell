@@ -86,6 +86,79 @@ def get_fallback_response(language: str = "en") -> Dict[str, Any]:
     return {"reply": msg, "apply": False, "changes": [], "warnings": []}
 
 
+def _run_orchestrator_v2(args) -> None:
+    """المرحلة 3 (نتائج س18): مسار التنسيق المُقيَّد فوق nibras.incident/v1.
+
+    يعمل فقط عند تمرير ``--orchestrator v2`` (مغلق افتراضيًا حتى تُقَيَّد).
+    المسار القديم لا يُلمس إطلاقًا: نفس المظروف (success/response/
+    updated_history/error) + قالب إضافي ``orchestrator`` للتدقيق.
+    يتطلب تجميع الشواهد المهيكلة: ``NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1``.
+    """
+    output: Dict[str, Any] = {
+        "success": False,
+        "response": None,
+        "updated_history": [],
+        "error": "",
+        "orchestrator": None,
+    }
+    try:
+        from agent import prompt_agent as agent_prompts
+        from agent import tools as agent_tools
+        from agent.orchestrator import run_orchestrator
+
+        from config import get_boot_incident
+
+        # نظام التعليمات = برومبت الوكيل المخصص (§10.2-B) — لا يحتوي
+        # {SYSTEM_LOGS} إطلاقاً؛ بيانات الحادثة تدخل عبر <incident> DATA فقط.
+        llm = get_provider(
+            args,
+            agent_prompts.AGENT_SYSTEM_PROMPT_EN,
+            0.1,
+            True,
+        )
+
+        def model_call(message: str, history: Any):
+            return llm.generate(message, history or [])
+
+        bundle = get_boot_incident()
+        incidents = bundle.get("incidents") or [] if isinstance(bundle, dict) else []
+        valid = [
+            inc
+            for inc in incidents
+            if isinstance(inc, dict) and inc.get("schema_version")
+        ]
+        if not valid:
+            output["success"] = True
+            output["response"] = {
+                "analysis_failure": "NO_INCIDENTS_COLLECTED",
+                "no_action_taken": True,
+            }
+            output["orchestrator"] = {
+                "version": "v2",
+                "notes": [
+                    "collect with NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1 "
+                    "(flag-gated, default-deny)",
+                ],
+            }
+            print(json.dumps(output, ensure_ascii=False))
+            return
+
+        incident = valid[0]
+        envelope = run_orchestrator(
+            incident, model_call, agent_tools.OsToolCommandRunner()
+        )
+        for key in ("success", "response", "updated_history", "error"):
+            output[key] = envelope.get(key, output[key])
+        output["orchestrator"] = envelope.get("orchestrator")
+    except Exception as exc:  # noqa: BLE001 — the envelope never crashes out
+        output["error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
+        output["response"] = {
+            "analysis_failure": "ORCHESTRATOR_UNAVAILABLE",
+            "no_action_taken": True,
+        }
+    print(json.dumps(output, ensure_ascii=False))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--message", default=None)
@@ -113,8 +186,21 @@ def main() -> None:
     )
     parser.add_argument("--preferred_language", default="Arabic")
     parser.add_argument("--user_persona", default="You are Nibras")
+    # المرحلة 3 (§18): علم التنسيق المُقيَّد — v2 فقط، مغلق افتراضيًا حتى
+    # تُقَيَّد نهاية العمر الكامل (Phase 5 QML). المسار القديم يظل مطابقًا
+    # بايت-بايت عندما يكون العلم غائبًا.
+    parser.add_argument(
+        "--orchestrator",
+        choices=["v2"],
+        default=None,
+        help="تنسيق مُقيَّد فوق nibras.incident/v1 (تجريبي، مغلق افتراضيًا)",
+    )
 
     args = parser.parse_args()
+
+    if args.orchestrator is not None:  # Phase 3 (§18): bounded orchestrator
+        _run_orchestrator_v2(args)
+        return
 
     # الهيكل العام للمخرجات
     output: Dict[str, Any] = {
@@ -148,9 +234,7 @@ def main() -> None:
                     file=sys.stderr,
                 )
                 message_vars = {}
-            final_message = prompt.build_message(
-                args.message_key, **message_vars
-            )
+            final_message = prompt.build_message(args.message_key, **message_vars)
 
         if not final_message:
             raise ValueError("Missing --message or invalid --message_key")
@@ -185,16 +269,12 @@ def main() -> None:
                     f"JSON Parsing failed for: {raw_response_text}",
                     file=sys.stderr,
                 )
-                final_response_data = get_fallback_response(
-                    args.preferred_language
-                )
+                final_response_data = get_fallback_response(args.preferred_language)
 
         # تحديث التاريخ قبل إرجاعه (إضافة دورة المحادثة الحالية)
         updated_history = list(history)
         updated_history.append({"role": "user", "content": final_message})
-        updated_history.append(
-            {"role": "assistant", "content": raw_response_text}
-        )
+        updated_history.append({"role": "assistant", "content": raw_response_text})
 
         # ملء بيانات المخرجات بنجاح
         output["success"] = True
