@@ -1,0 +1,190 @@
+{
+  "success": true,
+  "response": {
+    "schema_version": "nibras.diagnosis/v1",
+    "solutions": [
+      {
+        "id": "diag-0001",
+        "related_log": "0",
+        "title": "تحليل حادثة conmon: ربط الحاوية مُتحقَّق، هوية workload غير معروفة (fixture)",
+        "runtime_domain": "HOST_SESSION",
+        "event_transport": "STDOUT_STDERR",
+        "verification": {
+          "status": "AMBIGUOUS",
+          "time_scope": "event_time",
+          "reasons": [
+            "WORKLOAD_IDENTITY_UNKNOWN",
+            "CONMON_ROLE_CANDIDATE_ONLY"
+          ]
+        },
+        "identity_limits": [
+          "ربط الحاوية مُتحقَّق من الخادم؛ هوية workload الداخلية تبقى UNKNOWN.",
+          "conmon ليس workload ولا يجوز استخدامه كهوية للعملية الداخلية."
+        ],
+        "validation": {
+          "status": "POLICY_REJECTED",
+          "reasons": [
+            "target_evidence_unresolved",
+            "unit_scope_not_recorded"
+          ],
+          "details": [
+            "artifact=proposed_remediation",
+            "proposal_id=rd-1"
+          ]
+        },
+        "evidence": [
+          {
+            "id": "e1",
+            "origin": "journal_trusted",
+            "strength": "strong",
+            "desc": "حدث اصطناعي مُوثَّق من stdout/stderr داخل نطاق conmon."
+          },
+          {
+            "id": "e2",
+            "origin": "container_inspection",
+            "strength": "verified_association",
+            "desc": "ربط الحاوية مُتحقَّق؛ هوية الـ workload غير مُثبتة."
+          }
+        ],
+        "description": "تحليل نموذجي اصطناعي: قد يشير الحدث إلى فشل اعتماد، لكن هوية workload غير معروفة. هذا نص تحليلي غير تشغيلي.",
+        "why_this_works": "تعليل اصطناعي للاختبار فقط؛ لا يُعد تحققاً ولا توصية قابلة للتنفيذ.",
+        "confidence_note": "ثقة النموذج تتعلق بالتحليل فقط، وليست دليلاً على التحقق أو نجاح الإصلاح.",
+        "findings": [
+          {
+            "id": "f1",
+            "severity": "warning",
+            "text": "وجود conmon في سلسلة النقل لا يثبت هوية workload.",
+            "evidence_refs": ["e1", "e2"]
+          }
+        ],
+        "possible_causes": [
+          "سبب محتمل اصطناعي: تعذر ربط هوية العملية بالحاوية."
+        ],
+        "missing_evidence": [
+          "PID الـ workload وقت الحدث",
+          "نطاق مدير الخدمة المسجَّل"
+        ],
+        "uncertainties": [
+          "لا يمكن استبعاد تعارض بين حالة وقت الحدث والحالة الحالية."
+        ],
+        "diagnostic_questions": [
+          "هل الربط الحالي للحاوية يطابق الهوية وقت الحدث؟"
+        ],
+        "guidance_lines": [],
+        "steps": []
+      },
+      {
+        "id": "diag-0002",
+        "related_log": "1",
+        "title": "إرشاد خلفي مُتحقَّق لوحدة مسجَّلة (fixture)",
+        "runtime_domain": "HOST_SYSTEM",
+        "event_transport": "JOURNAL",
+        "verification": {
+          "status": "VERIFIED",
+          "time_scope": "current_state",
+          "reasons": []
+        },
+        "identity_limits": [
+          "النطاق المسجَّل هو نطاق النظام؛ لا يُدمج مع نطاق المستخدم."
+        ],
+        "validation": {
+          "status": "GUIDANCE_VALIDATED",
+          "reasons": [
+            "evidence_linked_and_scope_recorded"
+          ],
+          "details": [
+            "artifact=proposed_remediation",
+            "proposal_id=rd-1"
+          ]
+        },
+        "evidence": [
+          {
+            "id": "e3",
+            "origin": "journal_trusted",
+            "strength": "strong",
+            "desc": "سجل اصطناعي مربوط بنطاق النظام."
+          }
+        ],
+        "description": "نص تحليلي اصطناعي يوضح الحالة المسجَّلة. لا يحتوي أي أمر تنفيذي.",
+        "why_this_works": "تعليل اصطناعي (fixture) لا يُستخدم كتعليمات.",
+        "confidence_note": "ملاحظة ثقة اصطناعية، وليست تحققاً.",
+        "findings": [],
+        "possible_causes": [],
+        "missing_evidence": [],
+        "uncertainties": [],
+        "diagnostic_questions": [],
+        "guidance_lines": [
+          "راجع نتيجة الفحص للقراءة فقط الخاصة بالوحدة المسجَّلة قبل أي تغيير.",
+          "سجّل النطاق والحالة النشطة كما وردا من الخادم، ولا تفترض نجاح أي إجراء."
+        ],
+        "steps": []
+      },
+      {
+        "id": "diag-0003",
+        "related_log": "2",
+        "title": "تحليل فقط بلا إصلاح مقترح (fixture)",
+        "runtime_domain": "HOST_SESSION",
+        "event_transport": "SYSLOG",
+        "verification": {
+          "status": "UNAVAILABLE",
+          "time_scope": "event_time",
+          "reasons": [
+            "INSPECTION_TIMEOUT"
+          ]
+        },
+        "identity_limits": [
+          "فشل الفحص لا يجعل الهدف موجوداً أو غائباً."
+        ],
+        "validation": {
+          "status": "ANALYSIS_UNVERIFIED",
+          "reasons": [
+            "no_remediation_proposed"
+          ],
+          "details": [
+            "artifact=proposed_remediation"
+          ]
+        },
+        "evidence": [],
+        "description": "تحليل اصطناعي فقط؛ لا يوجد إصلاح مقترح ولا نص تشغيلي.",
+        "why_this_works": "",
+        "confidence_note": "لا توجد ثقة تشغيلية؛ هذا تحليل غير متحقق.",
+        "findings": [],
+        "possible_causes": [],
+        "missing_evidence": [
+          "نتيجة فحص غير منتهية"
+        ],
+        "uncertainties": [
+          "المهلة لا تُثبت وجود الهدف أو غيابه."
+        ],
+        "diagnostic_questions": [],
+        "guidance_lines": [],
+        "steps": []
+      }
+    ],
+    "validation": {
+      "tool_decisions": [
+        {
+          "artifact": "nibras.tool_request/v1",
+          "request_id": "tr-1",
+          "tool": "inspect_unit",
+          "status": "TOOL_REQUEST_ALLOWED",
+          "reason_codes": ["OK"],
+          "details": ["قراءة فقط"]
+        },
+        {
+          "artifact": "nibras.tool_request/v1",
+          "request_id": "tr-2",
+          "tool": "inspect_env",
+          "status": "POLICY_REJECTED",
+          "reason_codes": ["env_widening_refused"],
+          "details": ["env ممنوع افتراضياً"]
+        }
+      ]
+    }
+  },
+  "updated_history": [
+    { "role": "user", "content": "synthetic diagnosis v1 request (fixture)" },
+    { "role": "assistant", "content": "synthetic diagnosis v1 response (fixture)" }
+  ],
+  "error": null
+}

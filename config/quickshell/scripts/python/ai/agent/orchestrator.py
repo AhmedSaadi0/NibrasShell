@@ -46,11 +46,13 @@ try:  # package layout (scripts/python on sys.path)
     from . import contract as contract_mod
     from . import tools as tools_mod
     from . import prompt_agent as prompt_mod
+    from .. import audit as audit_mod
     from ..evidence import redact as _redact
 except ImportError:  # flat layout (cwd=scripts/python/ai)
     from agent import contract as contract_mod  # type: ignore[no-redef]
     from agent import tools as tools_mod  # type: ignore[no-redef]
     from agent import prompt_agent as prompt_mod  # type: ignore[no-redef]
+    import audit as audit_mod  # type: ignore[no-redef]
     from evidence import redact as _redact  # type: ignore[no-redef]
 
 # ─── budgets (§10.3) ─────────────────────────────────────────────────────────
@@ -164,6 +166,7 @@ class OrchestratorRun:
         model_call_deadline_s: float = MODEL_CALL_DEADLINE_S,
         incident_watchdog_s: float = INCIDENT_WATCHDOG_S,
         tool_timeout_s: float = tools_mod.TOOL_DEADLINE_S,
+        audit_logger: Any = None,
     ) -> None:
         self.incident = incident
         self.registry = contract_mod.RefRegistry.from_incident(incident)
@@ -175,6 +178,10 @@ class OrchestratorRun:
         self.tool_timeout_s = tool_timeout_s
         self.model_call_deadline_s = model_call_deadline_s
         self.incident_watchdog_s = incident_watchdog_s
+        # Audit is opt-in for library use; the production entry point
+        # (main.py) supplies an AuditLogger.from_env() instance.  A disabled
+        # logger is side-effect-free for tests and embedders.
+        self.audit_logger = audit_logger
 
         self._started = time.monotonic()
         self.calls_used = 0
@@ -185,6 +192,11 @@ class OrchestratorRun:
         self.tool_decisions: list[dict[str, Any]] = []
         self.rejected_guidance: list[dict[str, Any]] = []  # §11.3-7: visible rejections
         self.secrets_counts: dict[str, int] = {}
+        # Phase 6 measured-latency logging (§10.3/§17): every model/tool call
+        # is recorded with its own wall-clock measurement.  Values are
+        # metadata only — never prompt/tool content.
+        self.model_call_latencies_ms: list[dict[str, Any]] = []
+        self.tool_call_latencies_ms: list[dict[str, Any]] = []
         self.history: list[
             dict[str, str]
         ] = []  # bounded; envelope carries no transcript
@@ -203,23 +215,40 @@ class OrchestratorRun:
 
     # ─── one supervised model call + bounded parse ───────────────────────
 
-    def _call_model(self, message: str) -> tuple[Any, str | None]:
+    def _call_model(self, message: str, *, role: str = "?") -> tuple[Any, str | None]:
         if self.calls_used >= MAX_MODEL_CALLS:
             return None, F_BUDGET
         if self._watchdog_exceeded():
             return None, F_WATCHDOG
         self.calls_used += 1
+        call_index = self.calls_used
+        started = time.perf_counter()
         text, fail = self.supervisor.request(
             message, self.history, self._effective_model_deadline()
         )
         if fail is not None:
+            self._record_model_latency(call_index, role, started, fail)
             return None, fail
         value, parse_fail = contract_mod.parse_contract_json(
             text, max_bytes=MODEL_OUTPUT_MAX_BYTES
         )
+        self._record_model_latency(call_index, role, started, parse_fail or "ok")
         if parse_fail is not None:
             return None, parse_fail
         return value, None
+
+    def _record_model_latency(
+        self, call_index: int, role: str, started: float, outcome: str
+    ) -> None:
+        elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
+        self.model_call_latencies_ms.append(
+            {
+                "call_index": call_index,
+                "role": role,
+                "elapsed_ms": elapsed_ms,
+                "outcome": outcome,
+            }
+        )
 
     # ─── prompt assembly (DATA framing §10.5) ────────────────────────────
 
@@ -322,8 +351,17 @@ class OrchestratorRun:
             return
 
         self.tool_requests_used += 1
+        started = time.perf_counter()
         result = tools_mod.execute(
             tool_name, spec, self.tool_runner, timeout_s=self.tool_timeout_s
+        )
+        self.tool_call_latencies_ms.append(
+            {
+                "tool": tool_name,
+                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                "ok": bool(result.ok),
+                "reason_code": result.reason_code,
+            }
         )
         slice_bytes = len(result.payload_text.encode("utf-8", "replace")) + 64
         self.pool_bytes += slice_bytes
@@ -415,7 +453,7 @@ class OrchestratorRun:
         if self._watchdog_exceeded():
             return self._safe_failure(F_WATCHDOG)
         message = self._evidence_message(role, None)
-        value, fail = self._call_model(message)
+        value, fail = self._call_model(message, role=role)
         if fail in FATAL_CALL_FAILURES:
             # supervisor-fatal dead-ends (timeout/provider/watchdog/budget)
             # abort the run immediately — never repaired, never retried.
@@ -440,7 +478,9 @@ class OrchestratorRun:
                 contract_mod.SCHEMA_TOOL_REQUEST,
                 f"EVIDENCE TURN {role}",
             )
-            value, fail = self._call_model(self._evidence_message(role, notice))
+            value, fail = self._call_model(
+                self._evidence_message(role, notice), role=role
+            )
             if fail is None:
                 problem = (
                     None
@@ -482,7 +522,7 @@ class OrchestratorRun:
         if self._watchdog_exceeded():
             return self._safe_failure(F_WATCHDOG)
         message = self._final_message(None)
-        value, fail = self._call_model(message)
+        value, fail = self._call_model(message, role="C")
         if fail in FATAL_CALL_FAILURES:
             return self._safe_failure(fail)
         c_role_tool_request = (
@@ -557,7 +597,7 @@ class OrchestratorRun:
         notice = prompt_mod.build_repair_notice(
             problems, contract_mod.SCHEMA_DIAGNOSIS, "FINAL DIAGNOSIS"
         )
-        value2, fail2 = self._call_model(self._final_message(notice))
+        value2, fail2 = self._call_model(self._final_message(notice), role="D")
         if fail2 in FATAL_CALL_FAILURES:
             return self._safe_failure(fail2)
         if fail2 is not None:
@@ -592,13 +632,15 @@ class OrchestratorRun:
             },
         }
         response["response"] = payload
-        return {
+        envelope = {
             "success": True,
             "response": response,
             "updated_history": [],
             "error": "",
             "orchestrator": self._audit(),
         }
+        self._emit_result_audit(envelope)
+        return envelope
 
     def _safe_failure(
         self, reason_code: str, problems: list[str] | None = None
@@ -609,13 +651,105 @@ class OrchestratorRun:
         }
         if problems:
             response["problems"] = [str(p)[:300] for p in problems][:10]
-        return {
+        envelope = {
             "success": True,
             "response": response,
             "updated_history": [],
             "error": "",
             "orchestrator": self._audit(),
         }
+        self._emit_result_audit(envelope)
+        return envelope
+
+    def _latency_audit(self) -> dict[str, Any]:
+        return {
+            "total": round((time.monotonic() - self._started) * 1000.0, 3),
+            "model_calls": self.model_call_latencies_ms[:8],
+            "tool_calls": self.tool_call_latencies_ms[:8],
+        }
+
+    def _budget_audit(self) -> dict[str, Any]:
+        return {
+            "model_calls_used": self.calls_used,
+            "model_calls_max": MAX_MODEL_CALLS,
+            "tool_requests_used": self.tool_requests_used,
+            "tool_requests_max": MAX_TOOL_REQUESTS,
+            "tool_pool_bytes": self.pool_bytes,
+            "tool_pool_max_bytes": TOOL_RESULT_POOL_MAX_BYTES,
+            "model_call_deadline_s": self.model_call_deadline_s,
+            "incident_watchdog_s": self.incident_watchdog_s,
+        }
+
+    def _reason_codes(self, response: Any) -> list[str]:
+        """Collect typed reason codes only — never notes/prose/tool argv."""
+        codes: list[str] = []
+        if not isinstance(response, dict):
+            return codes
+        payload = response.get("response")
+        payload = payload if isinstance(payload, dict) else response
+        failure = response.get("analysis_failure") or payload.get("analysis_failure")
+        if isinstance(failure, str) and failure:
+            codes.append(failure)
+        validation = payload.get("validation")
+        if isinstance(validation, dict):
+            for decision in validation.get("tool_decisions") or []:
+                if isinstance(decision, dict):
+                    codes.extend(str(c) for c in decision.get("reason_codes") or [])
+            guidance = validation.get("guidance_decision")
+            if isinstance(guidance, dict):
+                codes.extend(str(c) for c in guidance.get("reason_codes") or [])
+        for decision in self.rejected_guidance:
+            if isinstance(decision, dict):
+                codes.extend(str(c) for c in decision.get("reason_codes") or [])
+        # Keep the audit line bounded and deterministic.
+        return list(dict.fromkeys(c for c in codes if c))[:32]
+
+    def _emit_audit(self, stage: str, outcome: str, envelope: dict[str, Any]) -> None:
+        if self.audit_logger is None:
+            return
+        response = envelope.get("response")
+        try:
+            self.audit_logger.emit(
+                stage=stage,
+                outcome=outcome,
+                correlation_id=getattr(self.registry, "correlation_id", None),
+                reason_codes=self._reason_codes(response),
+                redaction_counts=self.secrets_counts,
+                budget_usage=self._budget_audit(),
+                latency_ms=self._latency_audit(),
+            )
+        except Exception:  # noqa: BLE001 — audit must never break the envelope
+            pass
+
+    def _emit_result_audit(self, envelope: dict[str, Any]) -> None:
+        response = envelope.get("response")
+        payload = response.get("response") if isinstance(response, dict) else None
+        if not isinstance(payload, dict):
+            payload = response if isinstance(response, dict) else {}
+        failure = payload.get("analysis_failure")
+        if failure is None and isinstance(response, dict):
+            failure = response.get("analysis_failure")
+        validation = payload.get("validation")
+        if validation is None and isinstance(response, dict):
+            validation = response.get("validation")
+        outcome = str(failure) if isinstance(failure, str) and failure else "SUCCESS"
+        self._emit_audit("orchestrate", outcome, envelope)
+        if isinstance(validation, dict):
+            self._emit_audit(
+                "validate",
+                str(
+                    (validation.get("guidance_decision") or {}).get("status", "UNKNOWN")
+                ),
+                envelope,
+            )
+        # Rejected proposals stay visible in the audit even when the forced
+        # repair later produces a valid diagnosis (§11.3-7).
+        if self.rejected_guidance:
+            self._emit_audit(
+                "validate",
+                str(self.rejected_guidance[-1].get("status", "POLICY_REJECTED")),
+                envelope,
+            )
 
     def _audit(self) -> dict[str, Any]:
         return {
@@ -630,6 +764,11 @@ class OrchestratorRun:
                 "incident_watchdog_s": self.incident_watchdog_s,
                 "model_call_deadline_s": self.model_call_deadline_s,
             },
+            # Phase 6 additive blocks: measured wall-clock latency and the
+            # exact budget ledger used by this run.  Existing Phase-3 keys
+            # above remain unchanged.
+            "latency_ms": self._latency_audit(),
+            "budget_usage": self._budget_audit(),
             "notes": self.notes[:50],
         }
 
@@ -672,11 +811,15 @@ def run_orchestrator(
     model_call_deadline_s: float = MODEL_CALL_DEADLINE_S,
     incident_watchdog_s: float = INCIDENT_WATCHDOG_S,
     tool_timeout_s: float = tools_mod.TOOL_DEADLINE_S,
+    audit_logger: Any = None,
 ) -> dict[str, Any]:
     """Bounded orchestration of ONE ``nibras.incident/v1`` envelope.
 
     Fully injectable: ``model_call(message, history) -> (text, meta)`` and any
     runner providing ``run(argv, timeout_s)`` / ``read_file(path, max_bytes)``.
+    ``audit_logger`` is optional and must expose ``emit(...)`` (the production
+    entry point passes ``audit.AuditLogger.from_env()``); omitting it keeps
+    library calls side-effect-free.
     Returns the Phase-3 envelope (success/response/updated_history/error +
     the additive ``orchestrator`` audit block).
     """
@@ -687,5 +830,6 @@ def run_orchestrator(
         model_call_deadline_s=model_call_deadline_s,
         incident_watchdog_s=incident_watchdog_s,
         tool_timeout_s=tool_timeout_s,
+        audit_logger=audit_logger,
     )
     return run.run()

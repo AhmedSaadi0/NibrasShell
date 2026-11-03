@@ -116,3 +116,75 @@
 2. دلالات نافذة أولوية نقلات `audit` (بند `PRIORITY "6"` في مُثبّتة audit خارج فحص شريط 0..4 عمداً).
 3. حقول المُرسِل الفعلية لسجلات تدقيق journald (المُثبّتة تحاكي شكلاً ضرورياً فقط).
 4. اكتشاف `role` للحاويات (podman) وربط قواعد cgroup v1/v2 — القلب الأساسي للمرحلة 1.
+
+---
+
+## 10. المرحلة 5 — مُهايئات العرض QML (Legacy / New Diagnosis)
+
+**النطاق:** عرض QML إضافي فقط. لم تُفعَّل مسارات الخادم الجديدة افتراضياً، ولم يُعدَّل `main.py` أو محرّك السياسة في هذه المرحلة. المُهايئ الجديد يعرض الحقول عندما يصل رد يحمل `schema_version: "nibras.diagnosis/v1"`، ويحافظ مسار الإقلاع القديم على سلوكه مع عزل صريح.
+
+### 10.1 عقد الردود التي يفهمها المُهايئ
+
+- **Legacy Adapter:** ظرف بلا `schema_version`، ويحتوي `response.solutions[]` بالشكل القديم (`steps[].command`). يُوسم كل اقتراح بـ`QUARANTINED_LEGACY` بغض النظر عن أي حقول أخرى. لا شيء في هذا المسار يضع `validated = true`.
+- **New Diagnosis Adapter:** `response.schema_version == "nibras.diagnosis/v1"` مع `response.solutions[]`. يدعم أيضاً شكل المُنسِّق المتداخل `{schema_version, response: {incident_summary, findings, proposed_remediation, ...}}` دون اختراع حالة سياسة.
+- **آلية الحالات المقبولة:** `GUIDANCE_VALIDATED`، `POLICY_REJECTED`، `ANALYSIS_UNVERIFIED`، و`QUARANTINED_LEGACY` للمسار القديم. إذا غاب سجل التحقق في رد جديد، تعرض الواجهة `STATUS_ABSENT` وتبقى غير قابلة للنسخ — لا يُستنتج `VERIFIED`.
+- **الفصل بين القرارات:** قرارات الأدوات تُقرأ من `response.validation.tool_decisions[]` (أو الغلاف المتداخل) وتُعرض في قسم مستقل؛ لا تُدمج مع قرارات الإرشاد.
+- **النسخ:** زر النسخ يظهر فقط عندما تكون البطاقة `nibras.diagnosis/v1` وحالة الإرشاد `GUIDANCE_VALIDATED` ونص الإرشاد قادماً من `guidance_lines[]` أو `template.lines[]` الخلفية. نصوص النموذج (`description`، `why_this_works`، `findings`) و`ANALYSIS_UNVERIFIED` و`POLICY_REJECTED` و`QUARANTINED_LEGACY` غير قابلة للنسخ. أوامر `steps[].command` القديمة تبقى مرئية للسياق فقط، مع تعطيل النسخ والتحديد اليدوي (تُعرض كـ`Text` غير قابل للتحديد، لا كـ`TextEdit`). سجلات الإقلاع المعروضة (`OBSERVED LOGS`) تُعرض أيضاً كنص غير قابل للتحديد، وليس كمسار نسخ.
+- **الحقول المعروضة عند وجودها:** `runtime_domain`، `event_transport`، `verification.status/reasons/time_scope`، `identity_limits`، `uncertainties`/`uncertainty`، `missing_evidence`، `evidence[]`، `confidence_note`، `validation.reasons`/`reason_codes`، و`findings`.
+- **قيم enum الغائبة:** لا افتراضات `easy` أو `optional`؛ البطاقة تعرض `UNLABELED` صراحةً.
+- **تحليل spike:** يظل تحليل النموذج موسوماً `ANALYSIS_UNVERIFIED`، وأفعاله نصوص اعتبارية غير قابلة للنسخ. لا يوجد مسار تنفيذ في QML.
+
+### 10.2 مُثبّتات الاختبار
+
+- `scripts/python/tests/fixtures/legacy_envelope/boot_solution_legacy_unlabeled.json` — حل قديم بلا `difficulty`/`priority`.
+- `scripts/python/tests/fixtures/diagnosis_envelope/boot_solution_diagnosis_v1.json` — ثلاث حالات: `POLICY_REJECTED` مع عدم يقين وهوية محدودة، `GUIDANCE_VALIDATED` مع إرشاد خلفي بلا أوامر، و`ANALYSIS_UNVERIFIED`، إضافةً إلى `tool_decisions[]` منفصلة.
+- `scripts/python/tests/test_phase5_qml_adapters.py` — يثبّت أشكال JSON ويختبر عقود المصدر (غياب defaults الفشل-المفتوح، بوابة النسخ، وسوم الحالات، وعزل legacy). لا يوجد `qmltestrunner` في البيئة، لذلك هذه الاختبارات لا تدّعي تشغيل QML.
+
+### 10.3 Manual checklist (Phase 5)
+
+نفّذها يدوياً عند توفر جلسة Quickshell حقيقية:
+
+1. **Legacy quarantine:** افتح بطاقة الإقلاع القديمة. تحقق من ظهور `QUARANTINED_LEGACY` على بطاقة كل حل، ومن بقاء `difficulty`/`priority` كما وردا (أو `UNLABELED` عند غيابهما).
+2. **Legacy copy lock:** وسّع بطاقة قديمة. يجب أن يظهر كل `steps[].command` مع شارة `unvalidated (legacy)`، وألا يظهر زر النسخ، وألا يعمل تحديد النص بالفأرة. لا تنفّذ أي أمر.
+3. **Unlabeled legacy:** حمّل/حاكِ `boot_solution_legacy_unlabeled.json`. يجب أن تظهر شارتا `UNLABELED` بدل `easy`/`optional`.
+4. **New diagnosis statuses:** حمّل/حاكِ `boot_solution_diagnosis_v1.json` (أو رداً جديداً فعلياً). تحقق من ظهور `GUIDANCE_VALIDATED` و`POLICY_REJECTED` و`ANALYSIS_UNVERIFIED` حرفياً، ومن بقاء البطاقة المرفوضة مرئية مع أسباب السياسة.
+5. **Validated copy only:** في بطاقة `GUIDANCE_VALIDATED` فقط، تحقق من ظهور زر نسخ لنص `guidance_lines[]` الخلفي. يجب ألا يظهر زر نسخ للوصف أو التعليل أو النتائج أو أي بطاقة أخرى.
+6. **Uncertainty / identity limits:** تحقق من ظهور `identity_limits` و`uncertainties` و`missing_evidence` و`verification.reasons` وأسباب الرفض، ومن ظهور `runtime_domain` و`event_transport` كما وردا.
+7. **Tool decisions separation:** تحقق من ظهور قسم "Read-only inspection decisions" منفصلاً، وأن `TOOL_REQUEST_ALLOWED` لا يظهر كحالة إرشاد أو كإصلاح معتمد.
+8. **Log domains:** تحقق من ظهور وسم `domain` على سجلات الإقلاع عندما يوفره الخادم، ومن بقاء النص الظاهر `MODEL INTERPRETATION — NOT VERIFIED` منفصلاً عن `OBSERVED LOGS`، ومن أن نص السجل المعروض غير قابل للتحديد أو النسخ.
+9. **Spike analysis:** أنشئ/حاكِ حدث spike. تحقق من ظهور `ANALYSIS_UNVERIFIED` في الرأس حتى وهو مطوي، ومن عنوان "Model-suggested considerations — unverified"، ومن عدم وجود نسخ أو تنفيذ.
+10. **Failure/absence:** رد جديد بلا `validation` يجب أن يظهر `STATUS_ABSENT` وغير قابل للنسخ؛ لا تعرض الواجهة `VERIFIED` تلقائياً.
+
+---
+
+## 11. المرحلة 6 — Regression hardening & release gate
+
+**النطاق:** تحصين وإثبات بوابة الإصدار فقط. لم يُفعَّل مسار v2 افتراضياً، ولم تُضَف أي عملية كتابة/إصلاح تلقائي، وبقي مسار v1 كما هو خلف علمه. الملفات الجديدة: `scripts/python/ai/audit.py`، `scripts/python/ai/provider_limits.py`، `docs/supported-runtime-matrix.md`، و`scripts/python/tests/test_phase6_release_hardening.py`.
+
+### 11.1 ما أُضيف
+
+- **Audit logging:** `AuditLogger` يكتب JSONL إلى `$XDG_STATE_HOME/nibrasshell/ai-diagnostics/audit.jsonl` (أو `NIBRAS_SHELL_AI_AUDIT_LOG`)، بحقول `ts/correlation_id/stage/outcome/reason_codes/redaction_counts/budget_usage/latency_ms` فقط. لا نصوص حوادث أو أوامر أو أسرار؛ فشل الكتابة لا يفشل التشخيص. مراحل التسجيل: `collect`، `discover`، `orchestrate`، `validate`، `render`.
+- **Measured latency:** كل نداء نموذج يُقاس حول supervisor 120s، وكل أداة تُقاس حول غلاف 5s. القيم تُضاف كحقول إضافية في `orchestrator.latency_ms` وفي سجل audit. لم تُخفَّض أي حدود بلا قياس حقيقي؛ تبقى PROPOSED حتى قياس مزوّد محلي فعلي.
+- **Provider cancellation:** `LocalProvider` يستخدم الآن `(connect 5s, read 60s)` بدلاً من `1200s` المفردة؛ OpenAI/OpenRouter يمرران `timeout=120s` حيث تسمح حزمة SDK المثبتة. Gemini/Ollama بلا ربط timeout أصلي مُتحقَّق في هذه المرحلة؛ supervisor 120s هو حد الجدار النهائي، والنتيجة المتأخرة تُهمَل ولا تُعامل كنجاح.
+- **QML lifecycle:** `AiTask.qml` و`ResourceDiagnostics.qml` يملكان watchdog 310s، SIGTERM ثم SIGKILL بعد ثانية، وتسوية فشل مرة واحدة لتحرير الطابور/التبريد. دلالات Quickshell 0.3.1 الدقيقة غير موثقة داخلياً؛ لذلك التنفيذ best-effort مع فشل مغلق، والتحقق اليدوي أدناه.
+- **Privacy:** `redact_environment()` يرفض أي allowlist غير فارغ في R1 ويعيد `{}` لأي env؛ لا يوجد قراءة `/proc/<pid>/environ` في كود الإنتاج؛ سجل audit لا يقبل نصوصاً حرة. سجل AiTask لم يعد يطبع الظرف الخام، بل عدد البايتات فقط.
+- **Supported runtime:** المصفوفة الكاملة في `docs/supported-runtime-matrix.md`، وتشمل checklist الصلاحيات/السياق، مراجعة إلغاء المزوّد، ومراجعة دورة حياة QML.
+
+### 11.2 Manual checklist (Phase 6)
+
+1. **Audit path:** شغّل مسار v2 مع `NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1` ومزوّد محلي. تحقق من إنشاء `~/.local/state/nibrasshell/ai-diagnostics/audit.jsonl` (أو مسار XDG)، ومن أن كل سطر JSON صالح، وأنه لا يحتوي نص حادثة أو أمراً أو مفتاح API. جرّب `NIBRAS_SHELL_AI_AUDIT_DISABLED=1` للتأكد من تعطيل الكتابة.
+2. **No state changes:** راقب العملية أثناء حادثة container/unit. يجب ألا يظهر أي `sudo`، `dnf/apt/pacman`، `systemctl start/stop/restart/enable`، `podman create/run/rm/update`، أو shell تنفيذي. الأدوات المسموحة قراءة فقط: `journalctl`، `systemctl show`، `podman inspect/info`.
+3. **Provider timeout:** وجّه المزوّد إلى endpoint بطيء/متوقف. يجب أن ينتهي الطلب بحالة فشل آمنة (`MODEL_TIMEOUT`/`PROVIDER_ERROR`) بعد حد 120s، مع `no_action_taken: true`، ودون retry إضافي.
+4. **QML child watchdog:** باستخدام harness محلي أو أمر يحاكي طفلاً لا ينتهي، تحقق من أن `AiTask` يطلق `failed` بعد 310s، وأن العملية تُستهدف بـ SIGTERM ثم SIGKILL، وأن طلب AI التالي يعمل بعد انتهاء `requestCooldownMs`. لا تشغّل هذا الاختبار ضد مزوّد حقيقي أو حادثة إنتاج.
+5. **ResourceDiagnostics watchdog:** كرر الفحص على `ResourceDiagnostics`؛ يجب أن يعود الطلب الافتراضي المحدود وتُستأنف قائمة الانتظار بدل التعليق.
+6. **Privacy spot-check:** افحص `journalctl --output=json` وحادثة تحتوي `password=...`/token. تحقق من غياب القيمة الأصلية من prompt/model/tool result/audit/QML copy، ومن ظهور عدّاد redaction فقط.
+7. **Latency calibration:** نفّذ خمس حوادث تمثيلية على المزوّد المحلي، ثم اقرأ `latency_ms` و`budget_usage` من audit. لا تغيّر 120/300/310s اعتماداً على قياس اصطناعي؛ وثّق p50/p95 قبل أي معايرة.
+
+### 11.3 بوابة القبول
+
+- `python3 -m unittest discover -s scripts/python/tests -p 'test_phase*.py' -v` — يجب أن تنجح كل اختبارات المراحل 0–6.
+- `scripts/python/tests/test_phase6_release_hardening.py` يثبت: audit metadata/path/fail-open، latency/budget instrumentation، privacy source contracts، `docs/supported-runtime-matrix.md`، QML watchdog source contracts، وعدم وجود tool/action يغيّر الحالة.
+- AC #1–#17 mapped to tests/manual checks in `docs/supported-runtime-matrix.md` §8.
+- **صفر سلوك تلقائي يغيّر الحالة في R1:** لا أداة كتابة، ولا action_kind تنفيذي، ولا أمر يُشتق من نص النموذج؛ كل النتائج التشغيلية إما قراءة أو إرشاد خلفي declarative.
+
+

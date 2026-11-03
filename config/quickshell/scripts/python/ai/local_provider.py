@@ -4,6 +4,17 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 from base_provider import LLMProvider
 
+try:  # package layout (scripts/python on sys.path)
+    from .provider_limits import (
+        PROVIDER_CONNECT_TIMEOUT_S,
+        PROVIDER_READ_TIMEOUT_S,
+    )
+except ImportError:  # flat layout (cwd=scripts/python/ai)
+    from provider_limits import (
+        PROVIDER_CONNECT_TIMEOUT_S,
+        PROVIDER_READ_TIMEOUT_S,
+    )
+
 
 class LocalProvider(LLMProvider):
     def generate(
@@ -13,9 +24,7 @@ class LocalProvider(LLMProvider):
         messages: List[Dict[str, str]] = []
 
         if self.system_instruction:
-            messages.append(
-                {"role": "system", "content": self.system_instruction}
-            )
+            messages.append({"role": "system", "content": self.system_instruction})
 
         for h in history:
             messages.append(
@@ -49,7 +58,10 @@ class LocalProvider(LLMProvider):
                 endpoint,
                 headers=headers,
                 json=payload,
-                timeout=1200,
+                # Phase 6 (§10.3): explicit (connect, read) tuple instead of
+                # the old single 1200 s value.  The orchestrator's 120 s
+                # supervisor remains the total wall-clock boundary.
+                timeout=(PROVIDER_CONNECT_TIMEOUT_S, PROVIDER_READ_TIMEOUT_S),
             )
             response.raise_for_status()
             data = response.json()

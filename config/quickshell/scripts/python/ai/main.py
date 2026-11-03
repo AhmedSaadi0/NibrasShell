@@ -1,12 +1,13 @@
 import argparse
 import json
+import os
 import re
 import sys
 from typing import Any, Dict, List, Optional, Union
 
 import prompt
 
-from config import PRESETS, get_provider
+from config import PRESETS, get_provider, structured_evidence_enabled
 
 try:
     from json_repair import repair_json
@@ -86,6 +87,57 @@ def get_fallback_response(language: str = "en") -> Dict[str, Any]:
     return {"reply": msg, "apply": False, "changes": [], "warnings": []}
 
 
+def _phase6_audit_logger():
+    """Opt-in production audit logger (Phase 6, §14).
+
+    Library/test calls of the orchestrator remain side-effect-free.  The
+    production v2 path enables the logger when structured evidence is on or
+    when an explicit ``NIBRAS_SHELL_AI_AUDIT_LOG`` override is supplied.
+    """
+    try:
+        from audit import AuditLogger
+
+        if not structured_evidence_enabled() and not os.environ.get(
+            "NIBRAS_SHELL_AI_AUDIT_LOG"
+        ):
+            return None
+        return AuditLogger.from_env()
+    except Exception:  # noqa: BLE001 — audit setup must never break diagnostics
+        return None
+
+
+def _audit_emit(logger, stage, outcome, **kwargs) -> None:
+    if logger is None:
+        return
+    try:
+        logger.emit(stage=stage, outcome=outcome, **kwargs)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _audit_response_reasons(envelope) -> list[str]:
+    """Extract typed reason codes from an orchestrator envelope."""
+    response = envelope.get("response") if isinstance(envelope, dict) else None
+    if not isinstance(response, dict):
+        return []
+    payload = response.get("response")
+    if not isinstance(payload, dict):
+        payload = response
+    codes: list[str] = []
+    failure = payload.get("analysis_failure") or response.get("analysis_failure")
+    if isinstance(failure, str) and failure:
+        codes.append(failure)
+    validation = payload.get("validation")
+    if isinstance(validation, dict):
+        for decision in validation.get("tool_decisions") or []:
+            if isinstance(decision, dict):
+                codes.extend(str(c) for c in decision.get("reason_codes") or [])
+        guidance = validation.get("guidance_decision")
+        if isinstance(guidance, dict):
+            codes.extend(str(c) for c in guidance.get("reason_codes") or [])
+    return list(dict.fromkeys(c for c in codes if c))[:32]
+
+
 def _run_orchestrator_v2(args) -> None:
     """المرحلة 3 (نتائج س18): مسار التنسيق المُقيَّد فوق nibras.incident/v1.
 
@@ -101,6 +153,7 @@ def _run_orchestrator_v2(args) -> None:
         "error": "",
         "orchestrator": None,
     }
+    audit = _phase6_audit_logger()
     try:
         from agent import prompt_agent as agent_prompts
         from agent import tools as agent_tools
@@ -121,12 +174,48 @@ def _run_orchestrator_v2(args) -> None:
             return llm.generate(message, history or [])
 
         bundle = get_boot_incident()
+        collection = bundle.get("collection", {}) if isinstance(bundle, dict) else {}
+        if not isinstance(collection, dict):
+            collection = {}
         incidents = bundle.get("incidents") or [] if isinstance(bundle, dict) else []
+        if not isinstance(incidents, list):
+            incidents = []
+        counters = collection.get("counters", {})
+        if not isinstance(counters, dict):
+            counters = {}
         valid = [
             inc
             for inc in incidents
             if isinstance(inc, dict) and inc.get("schema_version")
         ]
+        _audit_emit(
+            audit,
+            "collect",
+            "FAILURE"
+            if (not isinstance(bundle, dict) or collection.get("collection_failed"))
+            else "SUCCESS",
+            reason_codes=(
+                collection.get("failure_reasons", [])
+                if isinstance(collection, dict)
+                else ["STRUCTURED_EVIDENCE_DISABLED"]
+            ),
+            budget_usage={
+                "records": counters.get("records_collected", 0),
+                "max_records": 200,
+                "incidents": len(incidents),
+            },
+        )
+        _audit_emit(
+            audit,
+            "discover",
+            "SUCCESS" if valid else "NO_INCIDENTS_COLLECTED",
+            reason_codes=(
+                collection.get("failure_reasons", [])
+                if isinstance(collection, dict)
+                else []
+            ),
+            budget_usage={"incidents": len(valid)},
+        )
         if not valid:
             output["success"] = True
             output["response"] = {
@@ -140,22 +229,73 @@ def _run_orchestrator_v2(args) -> None:
                     "(flag-gated, default-deny)",
                 ],
             }
+            _audit_emit(
+                audit,
+                "render",
+                "NO_INCIDENTS_COLLECTED",
+                reason_codes=["NO_INCIDENTS_COLLECTED"],
+            )
             print(json.dumps(output, ensure_ascii=False))
             return
 
         incident = valid[0]
         envelope = run_orchestrator(
-            incident, model_call, agent_tools.OsToolCommandRunner()
+            incident,
+            model_call,
+            agent_tools.OsToolCommandRunner(),
+            audit_logger=audit,
         )
         for key in ("success", "response", "updated_history", "error"):
             output[key] = envelope.get(key, output[key])
         output["orchestrator"] = envelope.get("orchestrator")
+        response = envelope.get("response")
+        payload = response.get("response") if isinstance(response, dict) else None
+        if not isinstance(payload, dict):
+            payload = response if isinstance(response, dict) else {}
+        failure = payload.get("analysis_failure")
+        if failure is None and isinstance(response, dict):
+            failure = response.get("analysis_failure")
+        validation = payload.get("validation")
+        if validation is None and isinstance(response, dict):
+            validation = response.get("validation")
+        render_outcome = (
+            str(failure)
+            if isinstance(failure, str) and failure
+            else (
+                str(
+                    (validation.get("guidance_decision") or {}).get("status", "SUCCESS")
+                )
+                if isinstance(validation, dict)
+                else "SUCCESS"
+            )
+        )
+        _audit_emit(
+            audit,
+            "render",
+            render_outcome,
+            correlation_id=incident.get("correlation_id")
+            if isinstance(incident, dict)
+            else None,
+            reason_codes=_audit_response_reasons(envelope),
+            budget_usage={
+                "incidents": len(valid),
+                "model_calls_used": (envelope.get("orchestrator") or {}).get(
+                    "model_calls_used", 0
+                ),
+            },
+        )
     except Exception as exc:  # noqa: BLE001 — the envelope never crashes out
         output["error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
         output["response"] = {
             "analysis_failure": "ORCHESTRATOR_UNAVAILABLE",
             "no_action_taken": True,
         }
+        _audit_emit(
+            audit,
+            "render",
+            "ORCHESTRATOR_UNAVAILABLE",
+            reason_codes=["ORCHESTRATOR_UNAVAILABLE"],
+        )
     print(json.dumps(output, ensure_ascii=False))
 
 

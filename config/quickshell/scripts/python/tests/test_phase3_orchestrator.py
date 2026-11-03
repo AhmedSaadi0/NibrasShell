@@ -29,7 +29,7 @@ Row map (tests ↔ plan §16.3):
 17 Subprocess flood (real child)     → TestRealSubprocessWrapper.test_stdout_flood_capped
 18 HTTP read hang → safe state       → TestOrchestratorSupervision.test_model_deadline_discards_partial
 19 Total deadline / watchdog         → TestOrchestratorSupervision.test_incident_watchdog / _deadline_interplay
-20 QML child hang (manual §16.4)     → TestOrchestratorSupervision.test_row20_qml_deferred (skip → Phase 5)
+20 QML child hang (manual §16.4)     → TestOrchestratorSupervision.test_row20_qml_deferred (skip → Phase 6 source contract + manual checklist)
 21 Secrets in evidence               → TestJournalQueryExecution.test_secret_redaction_counts /
                                        + e2e audit counts
 22 Conflicting evidence              → TestDiagnosisValidation.test_unresolved_evidence_blocks_target_guidance /
@@ -1704,11 +1704,12 @@ class TestOrchestratorSupervision(unittest.TestCase):
         self.assertEqual(model.calls, 2)
         self.assertIn("supervisor", " ".join(env["orchestrator"]["notes"]))
 
-    def test_row20_qml_deferred(self):  # §16.4 manual row — Phase 5
+    def test_row20_qml_deferred(self):  # §16.4 manual row — Phase 6
         self.skipTest(
-            "§16.3 row 20 (QML child hangs → AiTask watchdog) is Phase 5 scope: "
-            "exact Quickshell Process semantics are verified at implementation; "
-            "pointer documented in the §18 Phase-3 report handoff"
+            "§16.3 row 20 (QML child hangs → AiTask watchdog) is covered by the "
+            "Phase-6 source contract in test_phase6_release_hardening.py and by "
+            "the manual Quickshell runtime checklist in docs/diag-contract-notes.md "
+            "§11; exact Process signal semantics remain environment-specific"
         )
 
     def test_internal_error_contained(self):

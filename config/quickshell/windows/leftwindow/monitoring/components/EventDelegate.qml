@@ -33,6 +33,19 @@ Item {
     property string aiProcessBehavior: ""
     property var aiActions: []
 
+    // [Phase 5 — additive adapter fields | §13]
+    property string aiAdapterStatus: "ANALYSIS_UNVERIFIED"
+    property string aiVerificationStatus: ""
+    property var aiVerificationReasons: []
+    property string aiVerificationScope: ""
+    property string aiRuntimeDomain: ""
+    property string aiEventTransport: ""
+    property var aiIdentityLimits: []
+    property var aiUncertainties: []
+    property var aiMissingEvidence: []
+    property var aiEvidence: []
+    property var aiValidationReasons: []
+
     function getActionsArray() {
         const type = Array.isArray(aiActions) ? "Array" : typeof aiActions;
 
@@ -134,6 +147,7 @@ Item {
                 eventTime: delegateRoot.eventTime
                 isExpanded: delegateRoot.isExpanded
                 stateColor: delegateRoot.stateColor
+                adapterStatus: delegateRoot.aiAdapterStatus
             }
 
             // 2. AI Analysis Section (القسم القابل للتمدد - مفصل)
@@ -150,6 +164,17 @@ Item {
                 aiThermalRisk: delegateRoot.aiThermalRisk
                 aiThermalDetails: delegateRoot.aiThermalDetails
                 actionsModel: delegateRoot.getActionsArray()
+                adapterStatus: delegateRoot.aiAdapterStatus
+                verificationStatus: delegateRoot.aiVerificationStatus
+                verificationReasons: delegateRoot.aiVerificationReasons
+                verificationScope: delegateRoot.aiVerificationScope
+                runtimeDomain: delegateRoot.aiRuntimeDomain
+                eventTransport: delegateRoot.aiEventTransport
+                identityLimits: delegateRoot.aiIdentityLimits
+                uncertainties: delegateRoot.aiUncertainties
+                missingEvidence: delegateRoot.aiMissingEvidence
+                evidenceRows: delegateRoot.aiEvidence
+                validationReasons: delegateRoot.aiValidationReasons
             }
         }
 
