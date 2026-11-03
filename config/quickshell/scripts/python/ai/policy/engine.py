@@ -32,10 +32,16 @@ verbatim so Phase-3 behavior is stable):
    recorded time scope for the container template; explicitly attached
    event-time/current-state status + resolved manager scope for the unit
    template; null binding plus §11.2 routing for the update-review template).
-4. Phase 4.1 evidence-to-target linkage — a target's recorded time-scope
-   family must have a backing item in THIS incident's backend ledger; a
-   verified record for another dimension, a model assertion or a missing
-   file elsewhere never authorizes the proposed target (``evidence_not_linked``).
+4. Phase 4.1 exact evidence-to-target linkage — a container target must
+   be the exact backend association object the registry was built from, the
+   incident must be the exact source object, and the immutable construction
+   snapshot (correlation, association fields, evidence refs, ledger IDs)
+   must still match. The target must carry the exact non-empty evidence refs
+   copied from THIS association, all present in THIS ledger. Unit targets
+   have no backend per-unit evidence-reference chain and fail closed. A
+   time-scope family, a verified record for another dimension, a model
+   assertion, a missing file elsewhere, or UUID equality alone never
+   authorizes the target (``evidence_not_linked``).
 5. Backend template rendering ACROSS the closed registry: model prose is
    never interpolated; the operational text is the backend's own.
 
@@ -83,9 +89,10 @@ _TRANSPORT_ALIASES = {"STDOUT/STDERR": "STDOUT_STDERR"}
 # carry an `event_not_targetable`-style name and never collide with the
 # contract's set)
 R_EVENT_NOT_TARGETABLE = "event_not_targetable"
-# Phase 4.1: the target's own time-scope family has no backing item in this
-# incident's backend ledger — evidence for another dimension (or a model
-# assertion) does not authorize the proposed target.
+# Phase 4.1 closure: the target lacks the exact backend evidence refs for
+# THIS incident/association, or it is a unit target (no per-unit provenance
+# chain exists yet) — evidence for another dimension, another incident, or a
+# model assertion never authorizes the proposed target.
 R_EVIDENCE_NOT_LINKED = "evidence_not_linked"
 REDUCTION_NOTE = (
     "target-carrying advice refused by policy; the response is reduced to "
@@ -157,45 +164,122 @@ def _record_with_ref(registry: Any, ref: str, incident: dict) -> dict[str, Any] 
     return injected
 
 
-# §8.5 time-scope families: an event-time record can only be linked to an
-# event-time ledger item; a current-state record only to current-state
-# evidence. This is the smallest backend-derivable relationship — the model
-# never supplies it (``findings[].evidence_refs`` is display-only prose).
-_CURRENT_STATE_SCOPES = frozenset({"current_state", "current_runtime"})
+def _str_or_none(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
 
 
-def _time_family(scope: Any) -> str:
-    if not isinstance(scope, str):
-        return ""
-    value = scope.strip().lower()
-    if value.startswith("event_time"):
-        return "event_time"
-    if value in _CURRENT_STATE_SCOPES or value.startswith("current_runtime"):
-        return "current_state"
-    return ""
+def _linked_evidence_ids(
+    record: dict[str, Any], incident: dict, registry: Any
+) -> list[str]:
+    """Exact backend evidence linkage for a container target.
 
+    Provenance is established from backend facts and immutable construction
+    state, never from model text or correlation equality alone:
 
-def _linked_evidence_ids(record: dict[str, Any], incident: dict) -> list[str]:
-    """Evidence ids from THIS incident's backend ledger that share the
-    target record's time-scope family (§8.5).
+    - the evaluated incident is the exact object the registry was built from;
+    - the evaluated container association is the exact object the registry
+      was built from;
+    - the registry's immutable construction snapshot still matches the
+      current incident association (correlation, opaque ref, full id, status,
+      time scope, evidence refs) and the current ledger IDs;
+    - the target record's copied values still match that snapshot;
+    - every required ref exists in the current ledger.
 
-    A target whose family has no ledger item has no supporting evidence
-    entry: a verified record for another dimension elsewhere in the incident
-    is not linkage, and a model-cited ref is never consulted here.
+    A different incident dictionary cannot reuse the registry even with the
+    same correlation ID. Unit records return no linkage: the incident envelope
+    has no per-unit evidence-reference chain, so target-specific unit guidance
+    fails closed until the backend supplies one. Time-scope families are
+    deliberately not used as authorization (they can span different
+    subjects).
     """
-    family = _time_family(record.get("time_scope"))
-    ledger = incident.get("evidence_refs")
-    if not family or not isinstance(ledger, list):
+    if record.get("kind") != "container":
         return []
-    linked: list[str] = []
-    for item in ledger:
-        if (
-            isinstance(item, dict)
-            and isinstance(item.get("id"), str)
-            and _time_family(item.get("time_scope")) == family
-        ):
-            linked.append(item["id"])
-    return linked
+
+    if getattr(registry, "incident_ref", None) is not incident:
+        return []
+
+    association = incident.get("container_association")
+    if not isinstance(association, dict):
+        return []
+    if getattr(registry, "association_ref", None) is not association:
+        return []
+
+    snapshot = getattr(registry, "authorization_snapshot", None)
+    if snapshot is None:
+        return []
+
+    correlation = getattr(registry, "correlation_id", None)
+    if (
+        not isinstance(correlation, str)
+        or not correlation
+        or correlation != getattr(snapshot, "correlation_id", None)
+        or correlation != incident.get("correlation_id")
+    ):
+        return []
+
+    target_ref = record.get("_opaque_ref")
+    if (
+        not isinstance(target_ref, str)
+        or not target_ref
+        or target_ref != getattr(snapshot, "opaque_ref", None)
+        or association.get("ref") != target_ref
+    ):
+        return []
+
+    snapshot_full_id = getattr(snapshot, "full_id", None)
+    snapshot_status = getattr(snapshot, "status", None)
+    snapshot_time_scope = getattr(snapshot, "time_scope", None)
+    if (
+        record.get("full_id") != snapshot_full_id
+        or record.get("status") != snapshot_status
+        or record.get("time_scope") != snapshot_time_scope
+        or _str_or_none(association.get("full_id")) != snapshot_full_id
+        or _str_or_none(association.get("status")) != snapshot_status
+        or _str_or_none(association.get("time_scope")) != snapshot_time_scope
+    ):
+        return []
+
+    snapshot_refs = getattr(snapshot, "evidence_refs", None)
+    if not isinstance(snapshot_refs, tuple):
+        return []
+
+    record_refs = record.get("evidence_refs")
+    if not isinstance(record_refs, (list, tuple)):
+        return []
+    target_refs = tuple(ref for ref in record_refs if isinstance(ref, str) and ref)
+    if not target_refs or target_refs != snapshot_refs:
+        return []
+
+    association_refs = association.get("evidence_refs")
+    if not isinstance(association_refs, list):
+        return []
+    current_refs = tuple(
+        ref for ref in association_refs if isinstance(ref, str) and ref
+    )
+    if current_refs != snapshot_refs:
+        return []
+
+    ledger = incident.get("evidence_refs")
+    if not isinstance(ledger, list):
+        return []
+    ledger_ids = frozenset(
+        item["id"]
+        for item in ledger
+        if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]
+    )
+    snapshot_ledger_ids = getattr(snapshot, "ledger_ids", None)
+    if not isinstance(snapshot_ledger_ids, frozenset):
+        return []
+    if ledger_ids != snapshot_ledger_ids:
+        return []
+    if getattr(registry, "evidence_ids", None) != snapshot_ledger_ids:
+        return []
+
+    target_ids = set(target_refs)
+    if not target_ids <= ledger_ids:
+        return []
+
+    return sorted(target_ids)
 
 
 def evaluate_diagnosis(payload: Any, registry: Any, incident: dict) -> dict[str, Any]:
@@ -205,6 +289,15 @@ def evaluate_diagnosis(payload: Any, registry: Any, incident: dict) -> dict[str,
     ``analysis`` is the Phase-3 contract result (composable), ``decision``
     is the artifact-scoped guidance record and ``template`` is the
     backend-rendered payload (None unless ``GUIDANCE_VALIDATED``).
+
+    Phase-5 trusted-caller boundary: the orchestrator must pass its own
+    backend-created incident object and the ``RefRegistry`` constructed from
+    that exact object. Target authorization compares object identity plus the
+    registry's immutable construction snapshot; neither a UUID comparison nor
+    this public function establishes backend ownership for an arbitrary
+    Python caller. ``correlation_id`` is never an authorization token, and
+    ``G_EXPLAIN_ONLY`` continues to work without target-specific
+    authorization.
     """
     analysis = _contract.validate_diagnosis(payload, registry)
     notes: list[str] = list(analysis.get("notes") or [])
@@ -324,17 +417,20 @@ def evaluate_diagnosis(payload: Any, registry: Any, incident: dict) -> dict[str,
             "analysis": analysis,
         }
 
-    # 4b. Phase 4.1 evidence-to-target linkage: the target's own time-scope
-    #     family must have a backing item in THIS incident's backend ledger.
-    #     A verified record for another dimension, a model assertion or a
-    #     missing file elsewhere never authorizes the proposed target.
+    # 4b. Phase 4.1 closure evidence-to-target linkage: container targets
+    #     require the exact non-empty backend association refs from THIS
+    #     incident, all present in THIS ledger. Unit targets have no
+    #     per-unit provenance chain and fail closed. A matching time-scope
+    #     family, a verified record for another dimension, another
+    #     incident's refs, a model assertion or a missing file elsewhere
+    #     never authorizes the proposed target.
     if target_ref is not None:
-        scope = record.get("time_scope") if record else None
-        if not _linked_evidence_ids(record or {}, incident):
+        if not _linked_evidence_ids(record or {}, incident, registry):
             notes.append(
-                "no incident evidence item is linked to this target's "
-                f"recorded time scope {scope!r}; a verified record for "
-                "another dimension does not authorize it"
+                "target-specific backend evidence references are missing, "
+                "not present in this incident's ledger, or not from this "
+                "exact backend target association; target guidance fails "
+                "closed (unit records have no per-unit provenance chain)"
             )
             notes.append(REDUCTION_NOTE)
             decision = _contract.guidance_decision(

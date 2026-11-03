@@ -97,6 +97,7 @@ def make_incident(**overrides):
             "full_id": FULL_ID,
             "name": "webui",
             "image": "ghcr.io/open-webui",
+            "evidence_refs": ["e2"],
         },
         "event_time_unit_claim": {
             "unit": "open-webui.service",
@@ -448,6 +449,7 @@ class TestEventGate(unittest.TestCase):
                 "full_id": FULL_ID,
                 "name": "webui",
                 "image": "ghcr.io/open-webui",
+                "evidence_refs": ["e2"],
             },
         )
         reg = C.RefRegistry.from_incident(incident)
@@ -460,63 +462,173 @@ class TestEventGate(unittest.TestCase):
 
 
 class TestEvidenceLinkage(unittest.TestCase):
-    """Phase 4.1 — the proposed target must be linked to incident evidence.
+    """Phase 4.1 closure — exact backend evidence-to-target linkage.
 
-    The relationship is backend-derived from the incident ledger (§8.5
-    time-scope families); model-cited ``findings[].evidence_refs`` is
-    display-only prose and never consulted for authorization."""
+    Container advice is authorized only by the target's own non-empty
+    ``container_association.evidence_refs`` (copied into the registry), all
+    present in THIS incident's ledger, with the registry carrying the same
+    incident correlation and the exact association block. Unit records have
+    no per-unit evidence-reference chain and fail closed. Model-cited
+    ``findings[].evidence_refs`` is display-only prose and never consulted
+    for authorization."""
 
-    def _evaluate(self, incident, payload, findings=None):
-        reg = C.RefRegistry.from_incident(incident)
+    def _evaluate(self, incident, payload, registry=None):
+        reg = C.RefRegistry.from_incident(incident) if registry is None else registry
         return E.evaluate_diagnosis(payload, reg, incident)
 
-    def test_container_with_only_event_time_ledger_refused(self):
-        incident = make_incident(
-            evidence_refs=[
-                {
-                    "id": "e1",
-                    "origin": "journal_trusted",
-                    "strength": "strong",
-                    "time_scope": "event_time",
-                    "desc": "trusted fields",
-                }
-            ]
-        )
-        res = self._evaluate(incident, diagnosis())
+    def _assert_not_linked(self, res):
         self.assertEqual(res["status"], C.STATUS_REJECTED)
         self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
         self.assertIsNone(res["template"])
         self.assertIn(E.REDUCTION_NOTE, res["decision"]["details"])
 
-    def test_unit_with_only_current_state_ledger_refused(self):
-        incident = make_incident(
-            container_association=None,
-            evidence_refs=[
-                {
-                    "id": "e2",
-                    "origin": "runtime_query",
-                    "strength": "strong",
-                    "time_scope": "current_state",
-                    "desc": "podman inspect",
-                }
-            ],
+    def _same_correlation_incident(self):
+        """Distinct incident object with identical correlation, association
+        content/ref/evidence, and ledger content as the registry source."""
+        incident = make_incident()
+        other = make_incident(
+            event={
+                "message_hash": "f" * 64,
+                "time_utc_us": 1770000000000001,
+                "message_trunc": "different recorded event",
+            },
+            container_association=dict(incident["container_association"]),
         )
-        findings = [
+        return incident, other
+
+    def test_matching_backend_association_evidence_validates(self):
+        incident = make_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        # provenance is copied, not fabricated: exactly the association refs
+        self.assertEqual(reg.correlation_id, incident["correlation_id"])
+        self.assertEqual(reg.refs["cont_ref_1"]["evidence_refs"], ("e2",))
+        res = E.evaluate_diagnosis(diagnosis(), reg, incident)
+        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
+        self.assertEqual(res["template"]["guidance_code"], "G_REVIEW_CONTAINER_SOT")
+
+    def test_same_correlation_distinct_incident_cannot_share_registry(self):
+        incident, other = self._same_correlation_incident()
+        self.assertIsNot(incident, other)
+        self.assertEqual(incident["correlation_id"], other["correlation_id"])
+        self.assertEqual(
+            incident["container_association"],
+            other["container_association"],
+        )
+        self.assertEqual(
+            incident["container_association"]["ref"],
+            other["container_association"]["ref"],
+        )
+        self.assertEqual(
+            incident["container_association"]["evidence_refs"],
+            other["container_association"]["evidence_refs"],
+        )
+        self.assertEqual(
+            {item["id"] for item in incident["evidence_refs"]},
+            {item["id"] for item in other["evidence_refs"]},
+        )
+        reg = C.RefRegistry.from_incident(incident)
+        self.assertIs(reg.incident_ref, incident)
+        self.assertIsNot(reg.incident_ref, other)
+        self.assertIs(reg.association_ref, incident["container_association"])
+        self.assertIsNot(reg.association_ref, other["container_association"])
+        self._assert_not_linked(self._evaluate(other, diagnosis(), registry=reg))
+
+    def test_registry_a_paired_with_incident_b_fails_closed(self):
+        incident, other = self._same_correlation_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        self._assert_not_linked(self._evaluate(other, diagnosis(), registry=reg))
+
+    def test_association_status_mutation_after_registry_creation_fails_closed(self):
+        incident = make_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        self.assertEqual(reg.authorization_snapshot.status, "VERIFIED")
+        incident["container_association"]["status"] = "AMBIGUOUS"
+        self._assert_not_linked(self._evaluate(incident, diagnosis(), registry=reg))
+
+    def test_full_id_or_time_scope_mutation_after_registry_creation_fails_closed(self):
+        for key, value in (
+            ("full_id", "b" * 64),
+            ("time_scope", "event_time_association"),
+        ):
+            with self.subTest(field=key):
+                incident = make_incident()
+                reg = C.RefRegistry.from_incident(incident)
+                incident["container_association"][key] = value
+                self._assert_not_linked(
+                    self._evaluate(incident, diagnosis(), registry=reg)
+                )
+
+    def test_ledger_mutation_cannot_expand_registry_authorization(self):
+        incident = make_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        incident["evidence_refs"].append(
             {
-                "id": "f1",
-                "text": "runtime inspection present",
-                "evidence_refs": ["e2"],
-                "severity": "warning",
+                "id": "e9",
+                "origin": "runtime_query",
+                "strength": "strong",
+                "time_scope": "current_state",
+                "desc": "late runtime inspection",
             }
-        ]
+        )
+        self.assertNotIn("e9", reg.evidence_ids)
+        self.assertIn("e9", {item["id"] for item in incident["evidence_refs"]})
+        self._assert_not_linked(self._evaluate(incident, diagnosis(), registry=reg))
+
+    def test_replacement_association_object_cannot_reuse_registry(self):
+        incident = make_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        original = incident["container_association"]
+        replacement = dict(original)
+        incident["container_association"] = replacement
+        self.assertIsNot(replacement, original)
+        self.assertEqual(replacement, original)
+        self._assert_not_linked(self._evaluate(incident, diagnosis(), registry=reg))
+
+    def test_unmodified_source_identity_still_validates(self):
+        incident = make_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        self.assertIs(reg.incident_ref, incident)
+        self.assertIs(reg.association_ref, incident["container_association"])
+        res = self._evaluate(incident, diagnosis(), registry=reg)
+        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
+        self.assertEqual(res["template"]["guidance_code"], "G_REVIEW_CONTAINER_SOT")
+
+    def test_explain_only_remains_available_without_target_authorization(self):
+        incident = make_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        incident["container_association"]["status"] = "AMBIGUOUS"
         res = self._evaluate(
             incident,
-            diagnosis(ref="unit_ref_1", code="G_REVIEW_UNIT_STATE", findings=findings),
+            diagnosis(
+                remediation={
+                    "action_kind": "explain_only",
+                    "guidance_code": None,
+                    "target_ref": None,
+                    "rationale": "summarize the recorded facts",
+                }
+            ),
+            registry=reg,
         )
-        self.assertEqual(res["status"], C.STATUS_REJECTED)
-        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
+        self.assertIn("proposes no action", "\n".join(res["template"]["lines"]))
 
-    def test_model_cited_evidence_of_another_dimension_does_not_authorize(self):
+    def test_unit_target_still_fails_closed_with_matching_source(self):
+        incident = make_incident(container_association=None)
+        reg = C.RefRegistry.from_incident(incident)
+        self.assertIs(reg.incident_ref, incident)
+        self.assertIsNone(reg.association_ref)
+        self._assert_not_linked(
+            self._evaluate(
+                incident,
+                diagnosis(ref="unit_ref_1", code="G_REVIEW_UNIT_STATE"),
+                registry=reg,
+            )
+        )
+
+    def test_required_association_ref_absent_from_ledger_rejected(self):
+        # The target association requires e2; the ledger has a same-family
+        # current-state item (e3) but not e2. Time-scope family matching must
+        # not substitute for the exact required association ref.
         incident = make_incident(
             evidence_refs=[
                 {
@@ -525,8 +637,96 @@ class TestEvidenceLinkage(unittest.TestCase):
                     "strength": "strong",
                     "time_scope": "event_time",
                     "desc": "trusted fields",
-                }
+                },
+                {
+                    "id": "e3",
+                    "origin": "runtime_query",
+                    "strength": "strong",
+                    "time_scope": "current_state",
+                    "desc": "unrelated runtime inspection",
+                },
             ]
+        )
+        self._assert_not_linked(self._evaluate(incident, diagnosis()))
+
+    def test_foreign_association_ref_rejected(self):
+        association = dict(make_incident()["container_association"])
+        association["evidence_refs"] = ["e9"]  # never in the backend ledger
+        incident = make_incident(container_association=association)
+        self._assert_not_linked(self._evaluate(incident, diagnosis()))
+
+    def test_registry_incident_association_mismatch_rejected(self):
+        # Same correlation, but the incident's association block now declares
+        # a different evidence ref than the registry record copied. The IDs
+        # still exist in the ledger; exact association lineage is what fails.
+        incident = make_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        mismatched = make_incident(
+            container_association=dict(
+                incident["container_association"], evidence_refs=["e1"]
+            )
+        )
+        self._assert_not_linked(self._evaluate(mismatched, diagnosis(), registry=reg))
+
+    def test_container_without_association_evidence_refs_rejected(self):
+        association = dict(make_incident()["container_association"])
+        association.pop("evidence_refs")
+        incident = make_incident(container_association=association)
+        self._assert_not_linked(self._evaluate(incident, diagnosis()))
+
+    def test_same_family_units_cannot_authorize_each_other(self):
+        incident = make_incident(
+            container_association=None,
+            event_subject_unit_claim={
+                "unit": "other.service",
+                "unit_field": "_SYSTEMD_UNIT",
+                "scope": "SYSTEM",
+                "status": "EVENT_TIME_ATTESTED",
+                "time_scope": "event_time_association",
+            },
+        )
+        reg = C.RefRegistry.from_incident(incident)
+        self.assertIn("unit_ref_1", reg.refs)
+        self.assertIn("unit_ref_2", reg.refs)
+        for ref in ("unit_ref_1", "unit_ref_2"):
+            res = self._evaluate(
+                incident,
+                diagnosis(ref=ref, code="G_REVIEW_UNIT_STATE"),
+                registry=reg,
+            )
+            self._assert_not_linked(res)
+
+    def test_one_evidence_item_cannot_authorize_container_and_unit(self):
+        incident = make_incident()
+        reg = C.RefRegistry.from_incident(incident)
+        container = self._evaluate(incident, diagnosis(), registry=reg)
+        self.assertEqual(container["status"], C.STATUS_GUIDANCE_VALIDATED)
+        unit = self._evaluate(
+            incident,
+            diagnosis(ref="unit_ref_1", code="G_REVIEW_UNIT_STATE"),
+            registry=reg,
+        )
+        self._assert_not_linked(unit)
+
+    def test_model_finding_evidence_ref_cannot_authorize(self):
+        # The target association requires e2 and is event-time scoped; the
+        # ledger only has e1 (same time family), and the model cites e1.
+        # Family matching (or trusting the model ref) would authorize; exact
+        # association lineage must not.
+        incident = make_incident(
+            container_association=dict(
+                make_incident()["container_association"],
+                time_scope="event_time_association",
+            ),
+            evidence_refs=[
+                {
+                    "id": "e1",
+                    "origin": "journal_trusted",
+                    "strength": "strong",
+                    "time_scope": "event_time",
+                    "desc": "trusted fields",
+                }
+            ],
         )
         findings = [
             {
@@ -536,23 +736,77 @@ class TestEvidenceLinkage(unittest.TestCase):
                 "severity": "warning",
             }
         ]
-        res = self._evaluate(incident, diagnosis(findings=findings))
-        self.assertEqual(res["status"], C.STATUS_REJECTED)
-        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+        self._assert_not_linked(self._evaluate(incident, diagnosis(findings=findings)))
 
-    def test_claim_without_any_ledger_refused(self):
-        incident = make_incident(evidence_refs=[])
-        res = self._evaluate(incident, diagnosis(findings=[]))
-        self.assertEqual(res["status"], C.STATUS_REJECTED)
-        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
-
-    def test_family_matched_backend_evidence_validates(self):
-        # Control: the untouched Phase-4 ledger (event_time + current_state)
-        # still authorizes the container through the public path.
+    def test_other_incident_evidence_cannot_authorize(self):
+        # IDs restart per incident (e1..eN), so foreign incident B can carry
+        # an "e2" too. Provenance must come from the registry's incident
+        # correlation, not from reusing the same ID string.
         incident = make_incident()
-        res = self._evaluate(incident, diagnosis())
+        reg = C.RefRegistry.from_incident(incident)
+        foreign = make_incident(correlation_id="00000000-0000-0000-0000-000000000002")
+        self.assertIn(
+            "e2",
+            {item["id"] for item in foreign["evidence_refs"]},
+        )
+        self._assert_not_linked(self._evaluate(foreign, diagnosis(), registry=reg))
+
+    def test_unit_target_specific_guidance_fails_closed(self):
+        incident = make_incident(container_association=None)
+        res = self._evaluate(
+            incident,
+            diagnosis(ref="unit_ref_1", code="G_REVIEW_UNIT_STATE"),
+        )
+        self._assert_not_linked(res)
+
+    def test_unit_with_ledger_evidence_still_fails_closed(self):
+        # Even a well-formed event-time ledger item cannot authorize a unit
+        # target: there is no backend per-unit evidence-reference chain yet.
+        incident = make_incident(
+            container_association=None,
+            evidence_refs=[
+                {
+                    "id": "e1",
+                    "origin": "journal_trusted",
+                    "strength": "strong",
+                    "time_scope": "event_time",
+                    "desc": "trusted fields",
+                }
+            ],
+        )
+        findings = [
+            {
+                "id": "f1",
+                "text": "runtime inspection present",
+                "evidence_refs": ["e1"],
+                "severity": "warning",
+            }
+        ]
+        res = self._evaluate(
+            incident,
+            diagnosis(ref="unit_ref_1", code="G_REVIEW_UNIT_STATE", findings=findings),
+        )
+        self._assert_not_linked(res)
+
+    def test_explain_only_remains_available_with_unit_claims(self):
+        incident = make_incident(container_association=None)
+        res = self._evaluate(
+            incident,
+            diagnosis(
+                remediation={
+                    "action_kind": "explain_only",
+                    "guidance_code": None,
+                    "target_ref": None,
+                    "rationale": "summarize the recorded facts",
+                }
+            ),
+        )
         self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
-        self.assertEqual(res["template"]["guidance_code"], "G_REVIEW_CONTAINER_SOT")
+        self.assertIn("proposes no action", "\n".join(res["template"]["lines"]))
+
+    def test_container_with_empty_ledger_rejected(self):
+        incident = make_incident(evidence_refs=[])
+        self._assert_not_linked(self._evaluate(incident, diagnosis(findings=[])))
 
 
 # ─── §11.1 container minimum-evidence gate ──────────────────────────────────
@@ -590,6 +844,7 @@ class TestContainerTemplateGate(unittest.TestCase):
                 "full_id": FULL_ID,
                 "name": "webui",
                 "image": "ghcr.io/open-webui",
+                "evidence_refs": ["e2"],
             }
         )
         reg = C.RefRegistry.from_incident(incident)
@@ -606,6 +861,7 @@ class TestContainerTemplateGate(unittest.TestCase):
                 "full_id": FULL_ID,
                 "name": "webui",
                 "image": "ghcr.io/open-webui",
+                "evidence_refs": ["e2"],
             }
         )
         reg = C.RefRegistry.from_incident(incident)
@@ -622,6 +878,7 @@ class TestContainerTemplateGate(unittest.TestCase):
                 "full_id": FULL_ID,
                 "name": "webui",
                 "image": "ghcr.io/open-webui",
+                "evidence_refs": ["e2"],
             }
         )
         reg = C.RefRegistry.from_incident(incident)
@@ -644,6 +901,7 @@ class TestContainerTemplateGate(unittest.TestCase):
                     "full_id": FULL_ID,
                     "name": "webui",
                     "image": "ghcr.io/open-webui",
+                    "evidence_refs": ["e2"],
                 }
             )
             reg = C.RefRegistry.from_incident(incident)
@@ -663,6 +921,7 @@ class TestContainerTemplateGate(unittest.TestCase):
                 "full_id": FULL_ID,
                 "name": "webui",
                 "image": "ghcr.io/open-webui",
+                "evidence_refs": ["e2"],
             }
         )
         reg = C.RefRegistry.from_incident(incident)
@@ -684,6 +943,7 @@ class TestContainerTemplateGate(unittest.TestCase):
                 "full_id": FULL_ID,
                 "name": "webui",
                 "image": "ghcr.io/open-webui",
+                "evidence_refs": ["e2"],
             }
         )
         reg = C.RefRegistry.from_incident(incident)
@@ -701,15 +961,25 @@ class TestUnitTemplateGate(unittest.TestCase):
     def _payload(self, ref="unit_ref_1"):
         return diagnosis(ref=ref, code="G_REVIEW_UNIT_STATE")
 
-    def test_system_scope_renders_manager_label(self):
+    def test_system_scope_unit_guidance_fails_closed(self):
         incident = make_incident(container_association=None)
         reg = C.RefRegistry.from_incident(incident)
         res = E.evaluate_diagnosis(self._payload(), reg, incident)
-        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
-        self.assertEqual(res["template"]["target_ref"], "unit_ref_1")
-        self.assertIn("SYSTEM", "\n".join(res["template"]["lines"]))
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+        self.assertIsNone(res["template"])
+        # The backend template stays intact for a future per-unit provenance
+        # chain; render it directly to prove the unit/scope facts remain.
+        rendered = G.render(
+            "G_REVIEW_UNIT_STATE",
+            dict(reg.refs["unit_ref_1"], _opaque_ref="unit_ref_1"),
+            incident,
+            reg,
+        )
+        self.assertEqual(rendered["target_ref"], "unit_ref_1")
+        self.assertIn("SYSTEM", "\n".join(rendered["lines"]))
 
-    def test_user_scope_renders_without_system_verbs(self):
+    def test_user_scope_fails_closed_and_template_stays_user_safe(self):
         incident = make_incident(
             container_association=None,
             event_time_unit_claim={
@@ -723,11 +993,23 @@ class TestUnitTemplateGate(unittest.TestCase):
         )
         reg = C.RefRegistry.from_incident(incident)
         res = E.evaluate_diagnosis(self._payload(), reg, incident)
-        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
-        joined = "\n".join(res["template"]["lines"]).lower()
-        self.assertIn("USER", "\n".join(res["template"]["lines"]))
-        self.assertIn("never takes system-manager verbs", joined)
-        hits = [t for t in HOST_TOKENS if t in joined]
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+        self.assertIsNone(res["template"])
+
+        # No public path renders unit guidance while per-unit provenance is
+        # absent; the backend template itself must still stay user-safe.
+        rendered = G.render(
+            "G_REVIEW_UNIT_STATE",
+            dict(reg.refs["unit_ref_1"], _opaque_ref="unit_ref_1"),
+            incident,
+            reg,
+        )
+        joined = "\n".join(rendered["lines"])
+        lowered = joined.lower()
+        self.assertIn("USER", joined)
+        self.assertIn("never takes system-manager verbs", lowered)
+        hits = [t for t in HOST_TOKENS if t in lowered]
         self.assertEqual(hits, [])
 
     def test_unknown_scope_is_policy_refused(self):
@@ -770,7 +1052,7 @@ class TestUnitTemplateGate(unittest.TestCase):
         self.assertEqual(res["status"], C.STATUS_REJECTED)
         self.assertIsNone(res["template"])
 
-    def test_current_runtime_verified_unit_renders(self):
+    def test_current_runtime_verified_unit_fails_closed(self):
         incident = make_incident(
             container_association=None,
             proc_qualification=None,
@@ -784,7 +1066,9 @@ class TestUnitTemplateGate(unittest.TestCase):
         )
         reg = C.RefRegistry.from_incident(incident)
         res = E.evaluate_diagnosis(self._payload(), reg, incident)
-        self.assertEqual(res["status"], C.STATUS_GUIDANCE_VALIDATED)
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(res["decision"]["reason_codes"], [E.R_EVIDENCE_NOT_LINKED])
+        self.assertIsNone(res["template"])
 
     def test_unit_target_kind_mismatch_refused_upstream(self):
         incident = make_incident()
@@ -1133,7 +1417,7 @@ class TestClosedStatusVocabularyBattery(unittest.TestCase):
         "rejected_tool",
         "validated_container",
         "rejected_container",
-        "validated_unit",
+        "rejected_unit_provenance",
         "rejected_unit",
         "validated_update",
         "rejected_update_kernel",
@@ -1147,6 +1431,19 @@ class TestClosedStatusVocabularyBattery(unittest.TestCase):
     def _collect(self):
         incident = make_incident()
         reg = C.RefRegistry.from_incident(incident)
+        ambiguous = make_incident(
+            container_association={
+                "ref": "cont_ref_1",
+                "runtime": "podman",
+                "status": "AMBIGUOUS",
+                "time_scope": "current_state",
+                "full_id": FULL_ID,
+                "name": "webui",
+                "image": "ghcr.io/open-webui",
+                "evidence_refs": ["e2"],
+            }
+        )
+        reg_amb = C.RefRegistry.from_incident(ambiguous)
         kernel = make_incident(
             **NO_CLAIMS,
             source={"boot_id": "b0", "cursor": CURSOR, "event_transport": "KERNEL"},
@@ -1172,21 +1469,7 @@ class TestClosedStatusVocabularyBattery(unittest.TestCase):
             (self.CASES[2], E.evaluate_diagnosis(diagnosis(), reg, incident)),
             (
                 self.CASES[3],
-                E.evaluate_diagnosis(
-                    diagnosis(),
-                    reg,
-                    make_incident(
-                        container_association={
-                            "ref": "cont_ref_1",
-                            "runtime": "podman",
-                            "status": "AMBIGUOUS",
-                            "time_scope": "current_state",
-                            "full_id": FULL_ID,
-                            "name": "webui",
-                            "image": "ghcr.io/open-webui",
-                        }
-                    ),
-                ),
+                E.evaluate_diagnosis(diagnosis(), reg_amb, ambiguous),
             ),
             (
                 self.CASES[4],
@@ -1293,6 +1576,15 @@ class TestClosedStatusVocabularyBattery(unittest.TestCase):
         self.assertTrue(statuses <= CLOSED_STATUSES, statuses)
         # the battery must exercise all four literals, not just one
         self.assertEqual(statuses, CLOSED_STATUSES)
+
+    def test_rejected_container_case_is_explicitly_rejected(self):
+        results = dict(self._collect())
+        res = results["rejected_container"]
+        self.assertEqual(res["status"], C.STATUS_REJECTED)
+        self.assertEqual(
+            res["decision"]["reason_codes"], [C.R_TARGET_EVIDENCE_UNRESOLVED]
+        )
+        self.assertIsNone(res["template"])
 
     def test_template_iff_guidance_validated(self):
         for label, res in self._collect():

@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, NamedTuple
 
 try:  # package layout (scripts/python on sys.path)
     from ..incident import normalizer as _nz
@@ -314,6 +314,23 @@ def parse_contract_json(
 # ─── backend-side opaque reference registry (§11.3 rule 2) ───────────────────
 
 
+class _AuthorizationSnapshot(NamedTuple):
+    """Immutable backend construction snapshot for target authorization.
+
+    ``RefRegistry`` keeps the exact source incident/association objects for
+    identity checks; this tuple keeps the values that must not change after
+    construction, even if those dictionaries are mutated in place.
+    """
+
+    correlation_id: str | None
+    opaque_ref: str
+    full_id: str | None
+    status: str | None
+    time_scope: str | None
+    evidence_refs: tuple[str, ...]
+    ledger_ids: frozenset[str]
+
+
 class RefRegistry:
     """Refs issued ONLY from incident content; resolution never trusts model
     strings (§11.3 rule 2 — invented PIDs/hex/units never resolve).
@@ -329,22 +346,53 @@ class RefRegistry:
       verbatim (SYSTEM / USER / UNKNOWN) — claims are issued regardless of
       attestation status (the status stays a label in the incident; semantic
       gating is the Phase-4 engine's job);
+    - container records also copy the association block's backend-issued
+      ``evidence_refs`` verbatim (the policy engine requires these exact refs
+      for target linkage; model-cited findings refs are never used);
     - ``evidence_ids``: the ledger ``e<N>`` set for closure checks;
     - ``cursor``: the single incident-supplied opaque ``__CURSOR`` (verbatim;
-      the model may only re-quote it exactly).
+      the model may only re-quote it exactly);
+    - ``correlation_id``: the backend incident provenance; the policy engine
+      requires it to match the evaluated incident before trusting a target's
+      evidence association. It is a supporting check, never an authorization
+      token;
+    - ``incident_ref`` / ``association_ref``: the exact source dictionary
+      objects this registry was built from (strong references used for
+      object-identity checks);
+    - ``authorization_snapshot``: an immutable copy of the container
+      association's authorization-sensitive fields and the incident ledger
+      IDs, so later mutation of the source dictionaries cannot retain stale
+      authorization.
     """
 
-    __slots__ = ("refs", "evidence_ids", "cursor", "boot_id")
+    __slots__ = (
+        "refs",
+        "evidence_ids",
+        "cursor",
+        "boot_id",
+        "correlation_id",
+        "incident_ref",
+        "association_ref",
+        "authorization_snapshot",
+    )
 
     def __init__(self) -> None:
         self.refs: dict[str, dict[str, Any]] = {}
         self.evidence_ids: frozenset[str] = frozenset()
         self.cursor: str | None = None
         self.boot_id: str | None = None
+        self.correlation_id: str | None = None
+        self.incident_ref: dict | None = None
+        self.association_ref: dict | None = None
+        self.authorization_snapshot: _AuthorizationSnapshot | None = None
 
     @classmethod
     def from_incident(cls, incident: dict) -> "RefRegistry":
         reg = cls()
+        reg.incident_ref = incident
+        correlation = incident.get("correlation_id")
+        if isinstance(correlation, str) and correlation:
+            reg.correlation_id = correlation
         source = incident.get("source")
         if isinstance(source, dict):
             cursor = source.get("cursor")
@@ -365,23 +413,50 @@ class RefRegistry:
         # containers — reuse the backend-issued ref verbatim (no re-numbering)
         association = incident.get("container_association")
         if isinstance(association, dict):
+            reg.association_ref = association
             ref = association.get("ref")
             if isinstance(ref, str) and ref.startswith("cont_ref_"):
-                status = association.get("status")
+                full_id = (
+                    association.get("full_id")
+                    if isinstance(association.get("full_id"), str)
+                    else None
+                )
+                status = (
+                    association.get("status")
+                    if isinstance(association.get("status"), str)
+                    else None
+                )
+                time_scope = (
+                    association.get("time_scope")
+                    if isinstance(association.get("time_scope"), str)
+                    else None
+                )
+                evidence_refs = association.get("evidence_refs")
+                association_refs = (
+                    tuple(
+                        evidence_ref
+                        for evidence_ref in evidence_refs
+                        if isinstance(evidence_ref, str) and evidence_ref
+                    )
+                    if isinstance(evidence_refs, list)
+                    else ()
+                )
                 reg.refs[ref] = {
                     "kind": "container",
-                    "full_id": (
-                        association.get("full_id")
-                        if isinstance(association.get("full_id"), str)
-                        else None
-                    ),
-                    "status": status if isinstance(status, str) else None,
-                    "time_scope": (
-                        association.get("time_scope")
-                        if isinstance(association.get("time_scope"), str)
-                        else None
-                    ),
+                    "full_id": full_id,
+                    "status": status,
+                    "time_scope": time_scope,
+                    "evidence_refs": association_refs,
                 }
+                reg.authorization_snapshot = _AuthorizationSnapshot(
+                    correlation_id=reg.correlation_id,
+                    opaque_ref=ref,
+                    full_id=full_id,
+                    status=status,
+                    time_scope=time_scope,
+                    evidence_refs=association_refs,
+                    ledger_ids=reg.evidence_ids,
+                )
 
         # processes — one ref per recorded qualification pid
         qualification = incident.get("proc_qualification")
