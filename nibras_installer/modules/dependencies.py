@@ -24,7 +24,7 @@ def install_fedora(install_optional):
     run_command_verbose("sudo dnf copr enable -y errornointernet/quickshell")
     run_command_verbose("sudo dnf install -y hyprland quickshell")
 
-    required_pkgs = "plasma-nm playerctl polkit-kde dolphin konsole brightnessctl gammastep wl-clipboard cliphist sysstat bc glib2-devel dbus-glib-devel plasma-systemsettings acpi fish gnome-bluetooth-libs lm_sensors vnstat nethogs jq dbus-devel python3-devel python3.13 python3.13-devel gcc"
+    required_pkgs = "plasma-nm playerctl polkit-kde dolphin konsole brightnessctl gammastep wl-clipboard cliphist sysstat bc glib2-devel dbus-glib-devel plasma-systemsettings acpi fish gnome-bluetooth-libs lm_sensors vnstat nethogs jq dbus-devel python3-devel python3.13 python3.13-devel gcc hyprland-guiutils"
     optional_pkgs = (
         "strawberry easyeffects blueman telegram-desktop discord kvantum firefox"
     )
