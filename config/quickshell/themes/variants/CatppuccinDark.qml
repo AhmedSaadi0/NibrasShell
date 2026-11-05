@@ -47,7 +47,7 @@ BaseTheme {
     _inverseSurface: Qt.rgba(0.804, 0.839, 0.957, 1)
     _onInverseSurface: Qt.rgba(0.118, 0.118, 0.180, 1)
     _inversePrimary: Qt.rgba(0.537, 0.706, 0.980, 1)
-    _shadow: Qt.rgba(0.059, 0.059, 0.059, 1)
+    _shadow: Qt.rgba(0.039, 0.039, 0.062, 1)
     _scrim: Qt.rgba(0, 0, 0, 1)
 
     // تصحيح ألوان الإطار لتكون ألوان كاتبوتشين موكا الأصلية (Blue, Mauve, Pink)
