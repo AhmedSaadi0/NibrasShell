@@ -12,7 +12,8 @@ Contents:
   (``TOOL_REQUEST_ALLOWED`` / ``GUIDANCE_VALIDATED`` / ``POLICY_REJECTED`` /
   ``ANALYSIS_UNVERIFIED``) and never imply that any remediation was executed.
 
-The engine is standalone in Phase 4 (its full §16.3/AC matrix is verified by
-``tests/test_phase4_policy.py``); the production path wires it at Phase 5, so
-the Phase-3 orchestrator behavior remains byte-identical until then (§18).
+The engine's full §16.3/AC matrix is verified by
+``tests/test_phase4_policy.py``; the production orchestrator invokes it after
+the Phase-3 structural contract, so no target-specific guidance is published
+without a policy decision.
 """

@@ -22,9 +22,9 @@
 | Container runtime | Podman, rootless or rootful, read-only inspection | Supported when the user's runtime context is reachable | `podman inspect`/`info` only; wrong-context, permission, and unavailable states remain typed failures. |
 | Host systemd units | `systemctl show` (system or user scope selected by backend) | Supported when readable | User-scope actions are gated separately; no mutation verbs exist in the tool allowlist. |
 | Process inspection | `/proc/<pid>/status`, `/proc/<pid>/cgroup`, process metadata | Supported when visible | `/proc/<pid>/environ` is never read. `hidepid=2`, SELinux, or AppArmor denials are reported as permission/unavailable states. |
-| Local model provider | OpenAI-compatible local endpoint (`requests`) | Preferred | No host data leaves the machine; client timeout is `(connect 5 s, read 60 s)`. |
+| Local model provider | OpenAI-compatible local endpoint (`requests`) | Supported (optional) | The policy engine has no provider/location dependency; a local endpoint is not required for correctness. Client timeout is `(connect 5 s, read 60 s)`. |
 | Ollama provider | Local/remote endpoint configured by the user | Supported with residual limitation | The installed client has no verified native request-cancellation API; the orchestrator supervisor is the total-deadline boundary. |
-| Remote providers | OpenAI, OpenRouter, Gemini, DeepSeek | Optional | Redaction happens before send; egress is user-selected. SDK cancellation semantics remain best-effort; the orchestrator fails closed at 120 s. |
+| Remote providers | OpenAI, OpenRouter, Gemini, DeepSeek | Supported (optional) | Redaction happens before send; egress is user-selected. SDK cancellation semantics remain best-effort; the orchestrator fails closed at 120 s. |
 | Boot/incident payload | `nibras.incident/v1` structured envelope | Supported | Validated by the Phase 1–3 suites; old v1 envelope remains structurally readable through the legacy adapter. |
 | Audit destination | `$XDG_STATE_HOME/nibrasshell/ai-diagnostics/audit.jsonl` (default `~/.local/state/...`) | Supported | Append-only JSONL, mode `0600` at creation; write failure is fail-open for the request and fail-closed for audit visibility. |
 
@@ -116,22 +116,34 @@ additive fields in:
   `orchestrator.latency_ms.tool_calls`, and `orchestrator.latency_ms.total`;
 - the JSONL audit: `latency_ms` plus `budget_usage`.
 
+Calibration is **per provider/model configuration**. The policy engine,
+contracts, evidence processing, and tools are provider-agnostic; a locally
+hosted model is an option, not a requirement.
+
 Calibration procedure for the release operator:
 
-1. Enable `NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1` and choose the intended
-   provider (local preferred).
-2. Run at least five representative incidents from the supported runtime.
+1. Enable `NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1` and select the deployment the
+   user actually intends to operate: a local or remote Ollama endpoint, a
+   local OpenAI-compatible endpoint, OpenRouter, OpenAI, DeepSeek, or another
+   supported adapter. Record the provider, endpoint class, and model id.
+2. Run at least five representative incidents from the supported runtime on
+   that exact configuration. Do not reuse measurements from a different
+   provider or model.
 3. Read `latency_ms` and `budget_usage` from the audit JSONL; compare p50/p95
    against the 120 s per-request, 300 s incident, and 310 s QML limits.
 4. Do not lower a limit based on synthetic timing. The constants remain
-   **PROPOSED** until real local-model measurements are obtained.
+   **PROPOSED** until measurements for the selected deployment are obtained.
 
-**Calibration status (checked 2026-11-06): BLOCKED.** This validation
-environment still has no runnable local model/provider endpoint: TCP checks to
-`127.0.0.1:8080`, `:11434`, `:8000`, and `:1234` were closed. No empirical
-provider calibration value is claimed, and the constants remain **PROPOSED**.
-The Phase 6 tests measure the instrumentation path with an injected model;
-they do not claim provider latency.
+**Calibration status (checked 2026-11-06): BLOCKED.** The configured provider
+available in this validation environment is not reachable: TCP checks to
+`127.0.0.1:8080`, `:11434`, `:8000`, and `:1234` were closed. The exact
+configuration needed to unblock is the user's intended provider + endpoint +
+model id (for example, `ollama` at the configured remote base URL and model
+tag, or `openrouter` with the chosen model id). No empirical provider
+calibration value is claimed, and the constants remain **PROPOSED**. The
+Phase 6 tests measure the instrumentation path with an injected model; they
+do not claim provider latency. Missing local endpoints are not a code
+integration failure.
 
 ## 5. Provider-cancellation review
 
@@ -231,3 +243,83 @@ This phase is additive. The v2 orchestration path remains behind
 `--orchestrator v2`; the production v1 path is untouched. Release and rollback
 remain user-managed; no branch, commit, push, or rollback operation was
 performed by the agent.
+
+## 10. Production policy gate and backend guidance schema
+
+The v2 success path is now:
+
+```text
+model output → bounded parse → contract.validate_diagnosis()
+             → policy.engine.evaluate_diagnosis(payload,
+                                                 self.registry,
+                                                 self.incident)
+             → _success() → QML
+```
+
+- `evaluate_diagnosis()` is invoked for **every structurally valid final
+  diagnosis** (call C and the one forced repair call D).
+- The engine receives the exact `OrchestratorRun.incident` object and the
+  `RefRegistry` constructed from that same object. A registry built from a
+  copy/replay with an equal correlation id fails closed before the engine is
+  called; correlation-id equality is never an authorization token.
+- The policy status is authoritative. The contract's preliminary
+  `GUIDANCE_VALIDATED` cannot override a policy rejection.
+- Semantic `POLICY_REJECTED` never triggers structural repair or a retry.
+- Provider choice (local/remote Ollama, OpenAI-compatible, OpenRouter,
+  OpenAI, DeepSeek, …) cannot change a policy outcome: the engine consumes
+  only backend incident/registry objects and contract-normalized data.
+
+Additive response fields consumed by `services/system/BootAnalyzer.qml`:
+
+```json
+{
+  "schema_version": "nibras.diagnosis/v1",
+  "response": {
+    "…": "existing diagnosis fields",
+    "proposed_remediation": { "…": "contract-normalized, or null" },
+    "validation": {
+      "tool_decisions": [],
+      "guidance_decision": {
+        "artifact": "proposed_remediation",
+        "proposal_id": "rd-1",
+        "target_ref": "cont_ref_1",
+        "guidance_code": "G_REVIEW_CONTAINER_SOT",
+        "status": "GUIDANCE_VALIDATED",
+        "reason_codes": ["OK"],
+        "details": []
+      },
+      "labels": { "model_prose": "MODEL_AUTHORED / ANALYSIS_UNVERIFIED — never operative text" }
+    },
+    "guidance_template": {
+      "source": "backend_guidance_template/v1",
+      "artifact": "proposed_remediation",
+      "guidance_code": "G_REVIEW_CONTAINER_SOT",
+      "target_ref": "cont_ref_1",
+      "lines": ["backend-authored guidance line"],
+      "byte_limit_note": "template text is bounded and backend-authored"
+    }
+  },
+  "guidance_template": "same object as response.response.guidance_template"
+}
+```
+
+`guidance_template` is `null` for `POLICY_REJECTED` and
+`ANALYSIS_UNVERIFIED`. The only copyable text is `guidance_template.lines`
+for an artifact whose decision is `GUIDANCE_VALIDATED`; model rationale,
+findings, and legacy commands remain labeled model analysis and are never
+operative. Model-injected `solutions` / `validation` / `guidance_template` /
+`policy` keys are stripped before publication, and the published
+`proposed_remediation` is the contract-normalized record (model-authored
+`guidance_lines` do not survive).
+
+Audit outcomes (metadata-only JSONL, same redaction rules):
+
+| Condition | `orchestrate` outcome | `validate` outcome |
+|---|---|---|
+| Guidance published | `SUCCESS` | `GUIDANCE_VALIDATED` |
+| Policy refused proposal | `SUCCESS` | `POLICY_REJECTED` + policy reason |
+| No remediation proposed | `SUCCESS` | `ANALYSIS_UNVERIFIED` |
+| Contract invalid after repair | `INVALID_MODEL_OUTPUT` | contract `POLICY_REJECTED` + reason |
+| Provider timeout | `MODEL_TIMEOUT` | — |
+| Provider error | `PROVIDER_ERROR` | — |
+| Incident watchdog | `INCIDENT_DEADLINE_EXCEEDED` | — |

@@ -46,9 +46,10 @@ verbatim so Phase-3 behavior is stable):
    never interpolated; the operational text is the backend's own.
 
 Guarantees (AC #16): the status vocabulary is exactly the closed set and no
-status implies that any remediation was executed. The engine is standalone
-in Phase 4; the production path wires it at Phase 5 (§18) — the Phase-3
-orchestrator flow is unchanged until then.
+status implies that any remediation was executed. The production orchestrator
+now invokes this engine after structural contract validation, using the exact
+incident object and the ``RefRegistry`` built from it; the engine itself stays
+provider-agnostic and free of vendor/endpoint assumptions.
 """
 
 from __future__ import annotations

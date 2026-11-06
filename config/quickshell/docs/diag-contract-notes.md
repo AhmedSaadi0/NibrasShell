@@ -130,6 +130,7 @@
 - **آلية الحالات المقبولة:** `GUIDANCE_VALIDATED`، `POLICY_REJECTED`، `ANALYSIS_UNVERIFIED`، و`QUARANTINED_LEGACY` للمسار القديم. إذا غاب سجل التحقق في رد جديد، تعرض الواجهة `STATUS_ABSENT` وتبقى غير قابلة للنسخ — لا يُستنتج `VERIFIED`.
 - **الفصل بين القرارات:** قرارات الأدوات تُقرأ من `response.validation.tool_decisions[]` (أو الغلاف المتداخل) وتُعرض في قسم مستقل؛ لا تُدمج مع قرارات الإرشاد.
 - **النسخ:** زر النسخ يظهر فقط عندما تكون البطاقة `nibras.diagnosis/v1` وحالة الإرشاد `GUIDANCE_VALIDATED` ونص الإرشاد قادماً من `guidance_lines[]` أو `template.lines[]` الخلفية. نصوص النموذج (`description`، `why_this_works`، `findings`) و`ANALYSIS_UNVERIFIED` و`POLICY_REJECTED` و`QUARANTINED_LEGACY` غير قابلة للنسخ. أوامر `steps[].command` القديمة تبقى مرئية للسياق فقط، مع تعطيل النسخ والتحديد اليدوي (تُعرض كـ`Text` غير قابل للتحديد، لا كـ`TextEdit`). سجلات الإقلاع المعروضة (`OBSERVED LOGS`) تُعرض أيضاً كنص غير قابل للتحديد، وليس كمسار نسخ.
+- **حقل الإرشاد الخلفي الإضافي (تكامل السياسة):** يُنشر `response.response.guidance_template` (ونسخته في `response.guidance_template`) فقط عندما يعيد محرّك السياسة `GUIDANCE_VALIDATED`؛ ويكون `null` مع `POLICY_REJECTED` أو `ANALYSIS_UNVERIFIED`. بنيته `{source: "backend_guidance_template/v1", artifact, guidance_code, target_ref, lines[], byte_limit_note}`. لا تُنشر `guidance_lines` من النموذج ولا حقول `solutions`/`validation`/`policy` المحقونة.
 - **الحقول المعروضة عند وجودها:** `runtime_domain`، `event_transport`، `verification.status/reasons/time_scope`، `identity_limits`، `uncertainties`/`uncertainty`، `missing_evidence`، `evidence[]`، `confidence_note`، `validation.reasons`/`reason_codes`، و`findings`.
 - **قيم enum الغائبة:** لا افتراضات `easy` أو `optional`؛ البطاقة تعرض `UNLABELED` صراحةً.
 - **تحليل spike:** يظل تحليل النموذج موسوماً `ANALYSIS_UNVERIFIED`، وأفعاله نصوص اعتبارية غير قابلة للنسخ. لا يوجد مسار تنفيذ في QML.
@@ -187,7 +188,35 @@
 - `scripts/python/tests/test_phase6_release_hardening.py` يثبت: audit metadata/path/fail-open، latency/budget instrumentation، privacy source contracts، `docs/supported-runtime-matrix.md`، QML watchdog source contracts، provider worker source contract، typed local timeout meta، وعدم وجود tool/action يغيّر الحالة.
 - `scripts/python/tests/test_phase3_orchestrator.py::TestOrchestratorSupervision` يثبت: hard cancel للـ worker child عند المهلة (`test_worker_child_is_hard_cancelled`)، وإعادة استرجاعه بعد النجاح (`test_worker_child_reaped_after_success`)، وتحويل meta/exception إلى `MODEL_TIMEOUT`/`PROVIDER_ERROR`، وفشل مغلق عند تعذّر `fork`.
 - AC #1–#17 mapped to tests/manual checks in `docs/supported-runtime-matrix.md` §8.
-- **Calibration gate:** يبقى `BLOCKED` حتى يتوفر local provider endpoint حقيقي؛ لا تُغيَّر الثوابت PROPOSED بناءً على الاختبارات الاصطناعية.
+- **Calibration gate:** يبقى `BLOCKED` حتى تتوفر معايرة المزوّد/النموذج الفعلي الذي سيشغّله المستخدم (محلي أو بعيد: Ollama، OpenAI-compatible، OpenRouter، OpenAI، DeepSeek، إلخ). لا تُغيَّر الثوابت PROPOSED بناءً على الاختبارات الاصطناعية، ولا تُنقل قياسات مزوّد إلى آخر.
 - **صفر سلوك تلقائي يغيّر الحالة في R1:** لا أداة كتابة، ولا action_kind تنفيذي، ولا أمر يُشتق من نص النموذج؛ كل النتائج التشغيلية إما قراءة أو إرشاد خلفي declarative.
+
+---
+
+## 12. إغلاق تكامل محرّك السياسة في المسار الإنتاجي (2026-11-06)
+
+**المشكلة المُغلقة:** كان مسار النجاح في `agent/orchestrator.py` ينشر قرار `contract.validate_diagnosis()` مباشرةً دون تشغيل `policy.engine.evaluate_diagnosis()`، أي أن التحقق البنيوي كان يُعامل كأنه تحقق سياسة كامل.
+
+**المسار بعد الإغلاق:**
+
+```text
+model output → parse_contract_json → contract.validate_diagnosis
+             → policy.engine.evaluate_diagnosis(payload,
+                                                 self.registry,
+                                                 self.incident)
+             → _success (GUIDANCE_VALIDATED / POLICY_REJECTED /
+                         ANALYSIS_UNVERIFIED)
+```
+
+- يُستدعى المحرّك لكل تشخيص نهائي صالح بنيويًا، في نداء C ونداء الإصلاح D.
+- يُمرَّر **نفس** كائن `self.incident` و**نفس** `self.registry` المبني منه؛ لا نسخة مُسلسلة ولا سجل ثانٍ من correlation id. اختبارات الهوية تثبت `registry.incident_ref is incident` و`registry.association_ref is incident["container_association"]`. أي سجل مبني من نسخة/إعادة تشغيل يفشل مغلقًا (`INTERNAL_ORCHESTRATOR_ERROR`) قبل منح إرشاد.
+- قرار السياسة مرجعي: لا يستطيع قرار العقد الأولي `GUIDANCE_VALIDATED` تجاوز `POLICY_REJECTED`.
+- `POLICY_REJECTED` الدلالي لا يُطلق إصلاحًا أو إعادة محاولة؛ الإصلاح الواحد يبقى للفشل البنيوي فقط.
+- لا يُنشر `guidance_template` إلا مع `GUIDANCE_VALIDATED`؛ ومع `POLICY_REJECTED`/`ANALYSIS_UNVERIFIED` يكون `null`. يُنشر فقط `proposed_remediation` المُطبَّع من العقد، وتُحذف حقول النموذج المحقونة (`solutions`، `validation`، `guidance_template`، `policy`، `guidance_lines`).
+- `G_EXPLAIN_ONLY` يبقى متاحًا كشرح مُوسَّم على النقلات غير القابلة للاستهداف، ولا يمنح إرشادًا مرتبطًا بهدف.
+- المزوّد لا يغيّر النتيجة: المحرّك لا يعرف vendor/endpoint/model؛ اختبارات المسار العام تستخدم مزوّدين وهميين مختلفين وتقارن القرار والقالب.
+- التدقيق يميّز: `INVALID_MODEL_OUTPUT` (عقد)، `POLICY_REJECTED` (سياسة)، `ANALYSIS_UNVERIFIED`، `GUIDANCE_VALIDATED`، `MODEL_TIMEOUT`، `PROVIDER_ERROR`، `INCIDENT_DEADLINE_EXCEEDED`.
+
+**بوابة المعايرة تبقى منفصلة و`BLOCKED`** حتى تتوفر معايرة المزوّد/النموذج الفعلي؛ عدم وجود endpoint محلي ليس فشل تكامل.
 
 

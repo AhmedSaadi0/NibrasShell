@@ -99,6 +99,7 @@ def make_incident(**overrides):
             "full_id": FULL_ID,
             "name": "webui",
             "image": "ghcr.io/open-webui",
+            "evidence_refs": ["e2"],
         },
         "event_time_unit_claim": {
             "unit": "open-webui.service",
@@ -430,6 +431,105 @@ class TestMeasuredLatencyAndAudit(unittest.TestCase):
             self.assertNotIn("unit failed", raw)  # tool output is not audit data
             self.assertNotIn("journalctl", raw)  # no argv/binary in audit
             self.assertNotIn("unit_ref_1", raw)
+
+
+# ═══ policy decision audit outcomes ═════════════════════════════════════════
+
+
+class TestPolicyAuditOutcomes(unittest.TestCase):
+    """Audit lines expose the authoritative policy decision, not the
+    contract's preliminary status, and keep failure modes distinguishable."""
+
+    @staticmethod
+    def _run_events(model, incident=None, **kw):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.jsonl"
+            logger = AUD.AuditLogger(path)
+            envelope = run(
+                incident=incident,
+                model=model,
+                audit_logger=logger,
+                **kw,
+            )
+            events = read_events(path)
+        return envelope, events
+
+    @staticmethod
+    def _kernel_incident():
+        incident = make_incident()
+        incident["source"] = dict(incident["source"])
+        incident["source"]["event_transport"] = "KERNEL"
+        return incident
+
+    def test_guidance_validated_outcome(self):
+        _, events = self._run_events(FakeModel(null_evidence()))
+        validate = [e for e in events if e["stage"] == "validate"]
+        self.assertTrue(validate)
+        self.assertEqual(validate[-1]["outcome"], C.STATUS_GUIDANCE_VALIDATED)
+        orchestrate = [e for e in events if e["stage"] == "orchestrate"]
+        self.assertEqual(orchestrate[-1]["outcome"], "SUCCESS")
+
+    def test_policy_rejection_is_a_distinct_audit_outcome(self):
+        _, events = self._run_events(
+            FakeModel(null_evidence()), incident=self._kernel_incident()
+        )
+        validate = [e for e in events if e["stage"] == "validate"]
+        self.assertEqual(validate[-1]["outcome"], C.STATUS_REJECTED)
+        self.assertIn("event_not_targetable", validate[-1]["reason_codes"])
+        orchestrate = [e for e in events if e["stage"] == "orchestrate"]
+        self.assertEqual(orchestrate[-1]["outcome"], "SUCCESS")
+
+    def test_contract_invalidity_is_distinct_from_policy_rejection(self):
+        invalid = diagnosis(
+            remediation={"steps": [{"command": "dnf install python3"}]}
+        )
+        model = FakeModel(
+            [NULL_TOOL, NULL_TOOL, json.dumps(invalid), json.dumps(invalid)]
+        )
+        _, events = self._run_events(model)
+        orchestrate = [e for e in events if e["stage"] == "orchestrate"]
+        self.assertEqual(orchestrate[-1]["outcome"], "INVALID_MODEL_OUTPUT")
+        validate = [e for e in events if e["stage"] == "validate"]
+        self.assertTrue(validate)
+        self.assertEqual(validate[-1]["outcome"], C.STATUS_REJECTED)
+        self.assertIn("PROHIBITED_KEY", validate[-1]["reason_codes"])
+
+    def test_analysis_unverified_outcome(self):
+        value = diagnosis()
+        value["response"]["proposed_remediation"] = None
+        model = FakeModel([NULL_TOOL, NULL_TOOL, json.dumps(value)])
+        _, events = self._run_events(model)
+        validate = [e for e in events if e["stage"] == "validate"]
+        self.assertEqual(validate[-1]["outcome"], C.STATUS_ANALYSIS_UNVERIFIED)
+        self.assertIn("NO_REMEDIATION_PROPOSED", validate[-1]["reason_codes"])
+
+    def test_provider_timeout_and_error_are_typed_audit_outcomes(self):
+        _, timeout_events = self._run_events(
+            FakeModel([(0.2, json.dumps(diagnosis()))]),
+            model_call_deadline_s=0.05,
+        )
+        timeout_orchestrate = [
+            e for e in timeout_events if e["stage"] == "orchestrate"
+        ]
+        self.assertEqual(timeout_orchestrate[-1]["outcome"], ORC.F_MODEL_TIMEOUT)
+
+        def failing_provider(message, history):
+            raise RuntimeError("authentication failed")
+
+        _, error_events = self._run_events(
+            failing_provider, incident=make_incident()
+        )
+        error_orchestrate = [
+            e for e in error_events if e["stage"] == "orchestrate"
+        ]
+        self.assertEqual(error_orchestrate[-1]["outcome"], ORC.F_PROVIDER_ERROR)
+
+    def test_watchdog_expiry_is_a_typed_audit_outcome(self):
+        _, events = self._run_events(
+            FakeModel(null_evidence()), incident_watchdog_s=0.0
+        )
+        orchestrate = [e for e in events if e["stage"] == "orchestrate"]
+        self.assertEqual(orchestrate[-1]["outcome"], ORC.F_WATCHDOG)
 
 
 # ═══ privacy review ═════════════════════════════════════════════════════════

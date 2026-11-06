@@ -16,6 +16,15 @@ Call-role state machine over ONE incident envelope:
 - ≤4 model calls total (hard counter), one repair attempt per role maximum,
   ≤1 tool retry per request (inside ``agent.tools``).
 
+The final diagnosis is published only after BOTH gates pass: the structural
+contract (``agent.contract``) and the authoritative Phase-4 policy engine
+(``policy.engine.evaluate_diagnosis``). The policy engine receives this run's
+exact ``incident`` object and the ``RefRegistry`` built from that same object;
+its status (``GUIDANCE_VALIDATED`` / ``POLICY_REJECTED`` /
+``ANALYSIS_UNVERIFIED``) is authoritative, and only ``GUIDANCE_VALIDATED``
+publishes a backend-rendered ``guidance_template``. A semantic policy
+rejection is never repaired or retried.
+
 Deadlines (§10.3):
 - every model call runs under an independent per-request wall-clock supervisor
   (``model_call_deadline_s``; default 120 s): the provider callable executes in
@@ -53,6 +62,7 @@ try:  # package layout (scripts/python on sys.path)
     )
     from .. import audit as audit_mod
     from ..evidence import redact as _redact
+    from ..policy import engine as policy_engine
 except ImportError:  # flat layout (cwd=scripts/python/ai)
     from agent import contract as contract_mod  # type: ignore[no-redef]
     from agent import tools as tools_mod  # type: ignore[no-redef]
@@ -65,6 +75,7 @@ except ImportError:  # flat layout (cwd=scripts/python/ai)
     )
     import audit as audit_mod  # type: ignore[no-redef]
     from evidence import redact as _redact  # type: ignore[no-redef]
+    from policy import engine as policy_engine  # type: ignore[no-redef]
 
 # ─── budgets (§10.3) ─────────────────────────────────────────────────────────
 
@@ -89,6 +100,15 @@ F_INVALID_INCIDENT = "INVALID_INCIDENT_INPUT"
 # supervised-call fatal failure codes (never repaired, safe failure right away)
 FATAL_CALL_FAILURES = frozenset(
     {F_MODEL_TIMEOUT, F_PROVIDER_ERROR, F_WATCHDOG, F_BUDGET}
+)
+
+# closed Phase-4 guidance statuses (the policy engine is authoritative)
+POLICY_GUIDANCE_STATUSES = frozenset(
+    {
+        contract_mod.STATUS_GUIDANCE_VALIDATED,
+        contract_mod.STATUS_REJECTED,
+        contract_mod.STATUS_ANALYSIS_UNVERIFIED,
+    }
 )
 
 _PARSE_FAIL_MESSAGES = {
@@ -595,7 +615,13 @@ class OrchestratorRun:
         if fail is None and not c_role_tool_request:
             validation = contract_mod.validate_diagnosis(value, self.registry)
             if validation["analysis_ok"]:
-                return self._success(value, validation)
+                policy = self._complete_diagnosis(value, validation)
+                if policy is None:
+                    return self._safe_failure(
+                        F_INTERNAL,
+                        ["policy engine returned no usable guidance decision"],
+                    )
+                return self._success(value, validation, policy)
             if self.calls_used >= MAX_MODEL_CALLS:
                 self.notes.append(
                     "final diagnosis contract-invalid with no calls left "
@@ -649,7 +675,13 @@ class OrchestratorRun:
             return self._safe_failure(F_INVALID_OUTPUT)
         validation2 = contract_mod.validate_diagnosis(value2, self.registry)
         if validation2["analysis_ok"]:
-            return self._success(value2, validation2)
+            policy2 = self._complete_diagnosis(value2, validation2)
+            if policy2 is None:
+                return self._safe_failure(
+                    F_INTERNAL,
+                    ["policy engine returned no usable guidance decision"],
+                )
+            return self._success(value2, validation2, policy2)
         self.notes.append(
             "repair rerun still contract-invalid "
             f"({validation2['reason_code']}) — neutral failure, never execution"
@@ -657,22 +689,124 @@ class OrchestratorRun:
         self.rejected_guidance.append(validation2["decision"])
         return self._safe_failure(F_INVALID_OUTPUT, validation2["problems"])
 
+    # ─── authoritative Phase-4 policy gate ───────────────────────────────
+
+    def _complete_diagnosis(
+        self, model_value: dict, validation: dict
+    ) -> dict[str, Any] | None:
+        """Run the policy engine on a structurally valid final diagnosis.
+
+        The engine receives THIS run's exact incident object and the registry
+        built from that same object — never a copy, serialized replay, or a
+        second registry reconstructed from the correlation id.  A malformed
+        policy result fails closed: no guidance is published and the model is
+        never asked to "repair" a backend policy decision.
+        """
+        if getattr(self.registry, "incident_ref", None) is not self.incident:
+            self.notes.append(
+                "policy gate: registry was not built from this run's incident "
+                "object — failing closed"
+            )
+            return None
+        try:
+            result = policy_engine.evaluate_diagnosis(
+                model_value, self.registry, self.incident
+            )
+        except Exception as exc:  # noqa: BLE001 — policy failure is a safe failure
+            self.notes.append(
+                "policy gate raised "
+                f"{type(exc).__name__}: {_redact_note(exc)} — failing closed"
+            )
+            return None
+
+        if not isinstance(result, dict):
+            self.notes.append("policy gate returned a non-object result — failing closed")
+            return None
+        status = result.get("status")
+        decision = result.get("decision")
+        template = result.get("template")
+        analysis = result.get("analysis")
+        if status not in POLICY_GUIDANCE_STATUSES:
+            self.notes.append(
+                f"policy gate returned unknown status {status!r} — failing closed"
+            )
+            return None
+        if not isinstance(decision, dict) or decision.get("status") != status:
+            self.notes.append(
+                "policy gate returned an inconsistent decision record — failing closed"
+            )
+            return None
+        if (
+            not isinstance(analysis, dict)
+            or analysis.get("analysis_ok") is not True
+            or analysis.get("remediation") != validation.get("remediation")
+        ):
+            self.notes.append(
+                "policy gate analysis did not match the validated diagnosis — "
+                "failing closed"
+            )
+            return None
+
+        if status == contract_mod.STATUS_GUIDANCE_VALIDATED:
+            lines = template.get("lines") if isinstance(template, dict) else None
+            if (
+                not isinstance(template, dict)
+                or not isinstance(lines, list)
+                or not lines
+                or not all(isinstance(line, str) and line for line in lines)
+                or template.get("guidance_code") != decision.get("guidance_code")
+                or template.get("target_ref") != decision.get("target_ref")
+            ):
+                self.notes.append(
+                    "policy gate reported GUIDANCE_VALIDATED without a matching "
+                    "backend template — failing closed"
+                )
+                return None
+        elif template is not None:
+            self.notes.append(
+                f"policy gate returned a template for non-validated status {status!r} "
+                "— failing closed"
+            )
+            return None
+        return result
+
     # ─── envelopes ───────────────────────────────────────────────────────
 
-    def _success(self, model_value: dict, validation: dict) -> dict[str, Any]:
-        response = {k: v for k, v in model_value.items() if k != "response"}
+    def _success(
+        self, model_value: dict, validation: dict, policy: dict[str, Any]
+    ) -> dict[str, Any]:
+        status = policy["status"]
+        template = (
+            policy["template"]
+            if status == contract_mod.STATUS_GUIDANCE_VALIDATED
+            else None
+        )
         payload = model_value.get("response")
         payload = dict(payload) if isinstance(payload, dict) else {}
+        # Model-authored keys that could mimic policy/template/artifact state
+        # are removed before the backend publishes its own records.
+        for reserved in ("solutions", "validation", "guidance_template", "policy"):
+            payload.pop(reserved, None)
+        # Only the contract-normalized remediation is published: model-provided
+        # guidance_lines/confirmation/mapping fields never survive validation.
+        payload["proposed_remediation"] = validation.get("remediation")
         payload["validation"] = {
             "tool_decisions": self.tool_decisions,
-            "guidance_decision": validation["decision"],
+            "guidance_decision": policy["decision"],
             "labels": {
                 "model_prose": "MODEL_AUTHORED / ANALYSIS_UNVERIFIED — never operative text",
                 "tool_results": "BACKEND_REDACTED_SLICES — DATA only",
-                "remediation": "DECLARATIVE — nothing executed (template rendering is Phase 4)",
+                "remediation": "DECLARATIVE — nothing executed; backend template only after policy validation",
             },
         }
-        response["response"] = payload
+        # Additive §13 field consumed by BootAnalyzer.qml: present as null
+        # unless the policy engine rendered a backend-owned template.
+        payload["guidance_template"] = template
+        response = {
+            "schema_version": model_value.get("schema_version"),
+            "response": payload,
+            "guidance_template": template,
+        }
         envelope = {
             "success": True,
             "response": response,

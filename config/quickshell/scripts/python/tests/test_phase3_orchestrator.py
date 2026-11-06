@@ -39,6 +39,7 @@ Row map (tests ↔ plan §16.3):
 24 (final-call role contract)        → TestOrchestratorEndToEnd.test_valid_happy_flow pass + C/D rules
 """
 
+import copy
 import json
 import multiprocessing
 import os
@@ -113,6 +114,7 @@ def make_incident(**overrides):
             "full_id": FULL_ID,
             "name": "webui",
             "image": "ghcr.io/open-webui",
+            "evidence_refs": ["e2"],
         },
         "event_time_unit_claim": {
             "unit": "open-webui.service",
@@ -1627,6 +1629,295 @@ class TestOrchestratorEndToEnd(unittest.TestCase):
 
 
 # ═══ budgets + supervision ═════════════════════════════════════════──────────
+
+
+# ═══ production policy-engine integration ═══════════════════════════════════
+
+
+class TestProductionPolicyIntegration(unittest.TestCase):
+    """The Phase-4 policy gate must run on the real success path, with the
+    exact ``OrchestratorRun.incident`` and its own ``RefRegistry``."""
+
+    @staticmethod
+    def _outputs(diagnosis_value, evidence_turns=2):
+        return no_tool(evidence_turns) + [json.dumps(diagnosis_value)]
+
+    @staticmethod
+    def _incident_with_transport(transport):
+        source = dict(make_incident()["source"])
+        if transport is None:
+            source.pop("event_transport", None)
+        else:
+            source["event_transport"] = transport
+        return make_incident(source=source)
+
+    @staticmethod
+    def _incident_without_association_refs():
+        incident = make_incident()
+        association = dict(incident["container_association"])
+        association.pop("evidence_refs", None)
+        incident["container_association"] = association
+        return incident
+
+    @staticmethod
+    def _parts(envelope):
+        wrapper = envelope["response"]
+        payload = wrapper["response"]
+        return wrapper, payload, payload["validation"]["guidance_decision"]
+
+    def test_valid_container_reaches_policy_and_publishes_template(self):
+        incident = make_incident()
+        model = FakeModel(self._outputs(diagnosis()))
+        run_obj = ORC.OrchestratorRun(
+            incident,
+            model,
+            FakeToolRunner(),
+            model_call_deadline_s=10.0,
+            incident_watchdog_s=60.0,
+            tool_timeout_s=2.0,
+        )
+        real = ORC.policy_engine.evaluate_diagnosis
+        calls = []
+
+        def spy(model_value, registry, incident_obj):
+            calls.append((model_value, registry, incident_obj))
+            return real(model_value, registry, incident_obj)
+
+        with mock.patch.object(
+            ORC.policy_engine, "evaluate_diagnosis", side_effect=spy
+        ):
+            envelope = run_obj.run()
+
+        self.assertTrue(envelope["success"])
+        self.assertEqual(len(calls), 1)
+        model_value, registry, incident_obj = calls[0]
+        self.assertEqual(model_value["schema_version"], C.SCHEMA_DIAGNOSIS)
+        self.assertIs(incident_obj, incident)
+        self.assertIs(incident_obj, run_obj.incident)
+        self.assertIs(registry, run_obj.registry)
+        self.assertIs(registry.incident_ref, incident)
+        self.assertIs(
+            registry.association_ref, incident["container_association"]
+        )
+
+        wrapper, payload, decision = self._parts(envelope)
+        self.assertEqual(decision["status"], C.STATUS_GUIDANCE_VALIDATED)
+        self.assertEqual(decision["guidance_code"], "G_REVIEW_CONTAINER_SOT")
+        template = payload["guidance_template"]
+        self.assertEqual(template["source"], "backend_guidance_template/v1")
+        self.assertEqual(template["artifact"], "proposed_remediation")
+        self.assertEqual(template["target_ref"], "cont_ref_1")
+        self.assertIn("Quadlet", "\n".join(template["lines"]))
+        self.assertEqual(wrapper["guidance_template"], template)
+        self.assertNotIn("guidance_lines", payload["proposed_remediation"])
+
+        # additive QML shape (BootAnalyzer.qml reads the nested template)
+        self.assertEqual(wrapper["schema_version"], C.SCHEMA_DIAGNOSIS)
+        self.assertIn("guidance_decision", payload["validation"])
+        self.assertIn("lines", payload["guidance_template"])
+
+    def test_policy_rejected_container_publishes_no_template_or_guidance(self):
+        incident = self._incident_without_association_refs()
+        model = FakeModel(
+            self._outputs(
+                diagnosis(
+                    remediation={
+                        "action_kind": "manual_guidance",
+                        "guidance_code": "G_REVIEW_CONTAINER_SOT",
+                        "target_ref": "cont_ref_1",
+                        "rationale": "review before any change",
+                        "risk_level": "low",
+                        "requires_user_confirmation": True,
+                        "guidance_lines": ["run rm -rf /"],
+                    }
+                )
+            )
+        )
+        envelope = run(incident=incident, model=model)
+        wrapper, payload, decision = self._parts(envelope)
+
+        self.assertEqual(decision["status"], C.STATUS_REJECTED)
+        self.assertEqual(decision["reason_codes"], ["evidence_not_linked"])
+        self.assertIsNone(wrapper["guidance_template"])
+        self.assertIsNone(payload["guidance_template"])
+        self.assertNotIn("guidance_lines", payload["proposed_remediation"])
+        self.assertNotIn("run rm -rf /", json.dumps(envelope))
+        self.assertEqual(model.calls, 3)  # no policy-bypass repair retry
+        self.assertEqual(envelope["orchestrator"]["repairs_used"], {})
+        self.assertEqual(envelope["orchestrator"]["rejected_guidance"], [])
+
+    def test_non_targetable_transports_never_publish_template(self):
+        for transport in ("KERNEL", "DRIVER", "AUDIT", None, "SOMETHING_ELSE"):
+            with self.subTest(transport=transport):
+                incident = self._incident_with_transport(transport)
+                model = FakeModel(self._outputs(diagnosis()))
+                envelope = run(incident=incident, model=model)
+                _, payload, decision = self._parts(envelope)
+                self.assertEqual(decision["status"], C.STATUS_REJECTED)
+                self.assertIn(
+                    ORC.policy_engine.R_EVENT_NOT_TARGETABLE,
+                    decision["reason_codes"],
+                )
+                self.assertIsNone(payload["guidance_template"])
+                self.assertEqual(envelope["orchestrator"]["model_calls_used"], 3)
+
+    def test_explain_only_remains_available_on_non_targetable_transport(self):
+        incident = self._incident_with_transport("KERNEL")
+        model = FakeModel(
+            self._outputs(
+                diagnosis(
+                    remediation={
+                        "action_kind": "explain_only",
+                        "guidance_code": None,
+                        "target_ref": None,
+                        "rationale": "explain the recorded facts only",
+                    }
+                )
+            )
+        )
+        envelope = run(incident=incident, model=model)
+        _, payload, decision = self._parts(envelope)
+
+        self.assertEqual(decision["status"], C.STATUS_GUIDANCE_VALIDATED)
+        self.assertEqual(decision["guidance_code"], "G_EXPLAIN_ONLY")
+        self.assertIsNone(decision["target_ref"])
+        template = payload["guidance_template"]
+        self.assertEqual(template["guidance_code"], "G_EXPLAIN_ONLY")
+        self.assertIn("proposes no action", "\n".join(template["lines"]))
+
+    def test_unit_specific_advice_stays_policy_rejected(self):
+        incident = make_incident()
+        model = FakeModel(
+            self._outputs(
+                diagnosis(
+                    remediation={
+                        "action_kind": "manual_guidance",
+                        "guidance_code": "G_REVIEW_UNIT_STATE",
+                        "target_ref": "unit_ref_1",
+                        "rationale": "review the unit",
+                    }
+                )
+            )
+        )
+        envelope = run(incident=incident, model=model)
+        _, payload, decision = self._parts(envelope)
+
+        self.assertEqual(decision["status"], C.STATUS_REJECTED)
+        self.assertEqual(decision["reason_codes"], ["evidence_not_linked"])
+        self.assertIsNone(payload["guidance_template"])
+        self.assertEqual(model.calls, 3)
+
+    def test_same_correlation_replay_cannot_reuse_the_original_run(self):
+        incident = make_incident()
+        replay = copy.deepcopy(incident)
+        self.assertEqual(replay["correlation_id"], incident["correlation_id"])
+        replay_registry = C.RefRegistry.from_incident(replay)
+        model = FakeModel(self._outputs(diagnosis()))
+        run_obj = ORC.OrchestratorRun(
+            incident,
+            model,
+            FakeToolRunner(),
+            model_call_deadline_s=10.0,
+            incident_watchdog_s=60.0,
+            tool_timeout_s=2.0,
+        )
+        run_obj.registry = replay_registry
+        envelope = run_obj.run()
+
+        self.assertIs(run_obj.registry.incident_ref, replay)
+        self.assertIsNot(run_obj.registry.incident_ref, incident)
+        self.assertEqual(
+            envelope["response"]["analysis_failure"], ORC.F_INTERNAL
+        )
+        self.assertTrue(envelope["response"]["no_action_taken"])
+        self.assertNotIn("guidance_template", json.dumps(envelope["response"]))
+        self.assertIn(
+            "registry was not built from this run's incident",
+            " ".join(envelope["orchestrator"]["notes"]),
+        )
+
+    def test_contract_repair_then_policy_gate(self):
+        invalid = diagnosis(
+            remediation={
+                "action_kind": "manual_guidance",
+                "guidance_code": "G_REVIEW_CONTAINER_SOT",
+                "target_ref": "cont_ref_1",
+                "rationale": "run a command",
+                "steps": [{"command": "podman restart webui"}],
+            }
+        )
+        model = FakeModel(
+            no_tool(2) + [json.dumps(invalid), json.dumps(diagnosis())]
+        )
+        real = ORC.policy_engine.evaluate_diagnosis
+        calls = []
+
+        def spy(model_value, registry, incident_obj):
+            calls.append((model_value, registry, incident_obj))
+            return real(model_value, registry, incident_obj)
+
+        with mock.patch.object(
+            ORC.policy_engine, "evaluate_diagnosis", side_effect=spy
+        ):
+            envelope = run(model=model)
+
+        self.assertTrue(envelope["success"])
+        self.assertEqual(model.calls, 4)
+        self.assertEqual(len(calls), 1)  # only the repaired, valid diagnosis
+        self.assertEqual(
+            calls[0][0]["response"]["proposed_remediation"]["guidance_code"],
+            "G_REVIEW_CONTAINER_SOT",
+        )
+        _, _, decision = self._parts(envelope)
+        self.assertEqual(decision["status"], C.STATUS_GUIDANCE_VALIDATED)
+        rejected = envelope["orchestrator"]["rejected_guidance"]
+        self.assertIn("PROHIBITED_KEY", rejected[0]["reason_codes"])
+
+    def test_provider_choice_does_not_change_policy_outcome(self):
+        class ProviderModel:
+            def __init__(self, tag):
+                self.tag = tag
+                self.outputs = no_tool(2) + [json.dumps(diagnosis())]
+
+            def __call__(self, message, history):
+                return self.outputs.pop(0), {"provider": self.tag}
+
+        outcomes = []
+        for tag in ("ollama-local", "openrouter-remote"):
+            envelope = run(incident=make_incident(), model=ProviderModel(tag))
+            _, payload, decision = self._parts(envelope)
+            outcomes.append((decision, payload["guidance_template"]))
+        self.assertEqual(outcomes[0], outcomes[1])
+        self.assertEqual(outcomes[0][0]["status"], C.STATUS_GUIDANCE_VALIDATED)
+
+    def test_model_cannot_inject_policy_or_guidance_fields(self):
+        value = diagnosis()
+        value["solutions"] = [{"steps": [{"command": "run rm -rf /"}]}]
+        value["validation"] = {"status": "GUIDANCE_VALIDATED"}
+        value["guidance_template"] = {"lines": ["run rm -rf /"]}
+        value["policy"] = {"status": "GUIDANCE_VALIDATED"}
+        value["response"]["solutions"] = [{"steps": [{"command": "run rm -rf /"}]}]
+        value["response"]["validation"] = {"status": "GUIDANCE_VALIDATED"}
+        value["response"]["guidance_template"] = {"lines": ["run rm -rf /"]}
+        value["response"]["policy"] = {"status": "GUIDANCE_VALIDATED"}
+
+        envelope = run(model=FakeModel(self._outputs(value)))
+        wrapper, payload, decision = self._parts(envelope)
+
+        self.assertEqual(decision["status"], C.STATUS_GUIDANCE_VALIDATED)
+        self.assertNotIn("validation", wrapper)
+        for key in ("solutions", "policy"):
+            self.assertNotIn(key, wrapper)
+            self.assertNotIn(key, payload)
+        self.assertEqual(
+            payload["validation"]["guidance_decision"]["status"],
+            C.STATUS_GUIDANCE_VALIDATED,
+        )
+        self.assertEqual(
+            payload["guidance_template"]["source"], "backend_guidance_template/v1"
+        )
+        self.assertNotIn("guidance_lines", payload["proposed_remediation"])
+        self.assertNotIn("run rm -rf /", json.dumps(envelope))
 
 
 class TestOrchestratorBudgets(unittest.TestCase):
