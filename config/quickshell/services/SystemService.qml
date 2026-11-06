@@ -26,6 +26,11 @@ Singleton {
     property alias bootSolutionStatus: bootAnalyzer.bootSolutionStatus
     property alias bootSolutionsModel: bootAnalyzer.bootSolutionsModel
 
+    // [Phase 5 — additive adapter state | §13]
+    property alias bootSolutionSchemaVersion: bootAnalyzer.bootSolutionSchemaVersion
+    property alias bootSolutionAdapter: bootAnalyzer.bootSolutionAdapter
+    property alias bootToolDecisions: bootAnalyzer.bootToolDecisions
+
     function requestBootSolutions(bootLogs) {
         bootAnalyzer.requestBootSolutions(bootLogs);
     }

@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -11,6 +12,12 @@ import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 ai_dir = os.path.join(current_dir, "..", "ai")
 sys.path.append(ai_dir)
+
+from credential_transport import (
+    CredentialTransportError,
+    read_credential,
+    redact_secret,
+)
 
 # الآن يمكننا استيراد كلاسات الذكاء الاصطناعي الموجودة لديك
 try:
@@ -70,14 +77,55 @@ def main():
         "--provider", default="openai"
     )  # أو حسب الافتراضي لديك
     parser.add_argument("--model", default="gpt-4o")
-    parser.add_argument("--api_key", default="")
+    parser.add_argument(
+        "--credential-stdin",
+        action="store_true",
+        help="Read the API credential from one bounded JSON line on stdin",
+    )
+    # Legacy argv option: rejected without echoing or using its value.
+    parser.add_argument(
+        "--api_key", dest="_argv_api_key", default=None, help=argparse.SUPPRESS
+    )
     parser.add_argument("--base_url", default="")
+    parser.add_argument("--preferred_language", default="English")
+    parser.add_argument("--user_persona", default="You are Nibras")
     # ... أي وسائط أخرى يحتاجها config.py
 
     # ملاحظة: نحن لا نحتاج "preferred_language" هنا لأن التحليل تقني،
     # لكن يمكن إضافته إذا أردت الملخص بالعربية
 
     args = parser.parse_args()
+
+    if args._argv_api_key is not None:
+        print(
+            json.dumps(
+                {
+                    "summary": "Internal Script Error",
+                    "boot_duration": "Error",
+                    "logs": [
+                        {
+                            "time": "00:00",
+                            "msg": "CREDENTIAL_TRANSPORT_ERROR:ARGV_FORBIDDEN",
+                        }
+                    ],
+                }
+            )
+        )
+        return
+
+    try:
+        args.api_key = read_credential() if args.credential_stdin else ""
+    except CredentialTransportError as exc:
+        print(
+            json.dumps(
+                {
+                    "summary": "Internal Script Error",
+                    "boot_duration": "Error",
+                    "logs": [{"time": "00:00", "msg": str(exc)}],
+                }
+            )
+        )
+        return
 
     # 1. جلب البيانات الحقيقية
     raw_data = get_system_data()
@@ -112,13 +160,16 @@ def main():
 
     except Exception as e:
         # طباعة خطأ بتنسيق JSON ليفهمه QML
-        import json
-
         error_json = json.dumps(
             {
                 "summary": "Internal Script Error",
                 "boot_duration": "Error",
-                "logs": [{"time": "00:00", "msg": str(e)}],
+                "logs": [
+                    {
+                        "time": "00:00",
+                        "msg": redact_secret(str(e), getattr(args, "api_key", "")),
+                    }
+                ],
             }
         )
         print(error_json)

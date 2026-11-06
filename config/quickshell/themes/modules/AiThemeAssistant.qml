@@ -207,7 +207,7 @@ QtObject {
             aiBusy = false;
             aiError = errorMessage;
             addAiMessage("assistant", qsTr("AI request failed."), "");
-        }, "color_palette_ai", 2);
+        }, "color_palette_ai", 2, { credential: App.systemAiCredential });
     }
 
     /**

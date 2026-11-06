@@ -124,8 +124,8 @@ ColumnLayout {
         // تحويل الهيستوري إلى نص JSON
         var historyJson = JSON.stringify(root.chatHistory);
 
-        // تشغيل العملية
-        chatProcess.command = [root.pythonPath, root.scriptPath + "advanced_chat.py", "--api_key", root.apiKey, "--model", root.currentModel, "--message", msg, "--history", historyJson];
+        // تشغيل العملية — المرحلة 5.3: السر يُمرَّر عبر stdin لا عبر argv
+        chatProcess.command = [root.pythonPath, root.scriptPath + "advanced_chat.py", "--credential-stdin", "--model", root.currentModel, "--message", msg, "--history", historyJson];
 
         chatProcess.running = true;
     }
@@ -133,6 +133,9 @@ ColumnLayout {
     Process {
         id: chatProcess
         running: false
+        stdinEnabled: true
+
+        onStarted: chatProcess.write(JSON.stringify({ credential: root.apiKey || "" }) + "\n")
 
         // تجميع المخرجات
         property string outputBuffer: ""

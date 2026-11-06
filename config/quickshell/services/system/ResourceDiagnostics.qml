@@ -17,6 +17,12 @@ QtObject {
     property int _resourceDiagnosticExitCode: 0
     property int _resourceDiagnosticExitStatus: 0
 
+    // Phase 6 (§10.3): every diagnostics child gets an independent watchdog
+    // (310 s) so a hung Python process cannot occupy the queue forever.
+    property int watchdogMs: 310000
+    property int terminationGraceMs: 1000
+    property bool _resourceDiagnosticTimedOut: false
+
     signal tempDiagnosticsReady(var data)
 
     function _defaultResourceDiagnosticResult() {
@@ -79,6 +85,30 @@ QtObject {
         _pumpResourceDiagnosticsQueue();
     }
 
+    function _onResourceDiagnosticWatchdog() {
+        if (!_activeResourceDiagnosticAction || _resourceDiagnosticTimedOut)
+            return;
+        _resourceDiagnosticTimedOut = true;
+        console.error(`[ResourceDiagnostics] watchdog: '${_activeResourceDiagnosticAction}' exceeded ${watchdogMs} ms; terminating child`);
+        _resourceDiagnosticsProc.signal(15); // SIGTERM
+        _resourceDiagnosticKillTimer.restart();
+        _resourceDiagnosticSettleTimer.restart();
+    }
+
+    function _settleTimedOutResourceDiagnostic() {
+        const action = _activeResourceDiagnosticAction;
+        if (!action || !_resourceDiagnosticTimedOut)
+            return;
+        // Clear before touching `running`: onRunningChanged may run
+        // synchronously and would otherwise recurse into this function.
+        _resourceDiagnosticTimedOut = false;
+        if (_resourceDiagnosticsProc.running)
+            _resourceDiagnosticsProc.running = false;
+        if (_activeResourceDiagnosticAction !== action)
+            return;
+        _finishResourceDiagnosticRequest(action, action === "temps" ? {} : _defaultResourceDiagnosticResult());
+    }
+
     function _pumpResourceDiagnosticsQueue() {
         if (_activeResourceDiagnosticAction || !_resourceDiagnosticQueue.length)
             return;
@@ -88,8 +118,10 @@ QtObject {
         _resourceDiagnosticStderrText = "";
         _resourceDiagnosticExitCode = 0;
         _resourceDiagnosticExitStatus = 0;
+        _resourceDiagnosticTimedOut = false;
         _resourceDiagnosticsProc.command = [...App.scripts.python.systemDiagnosticsCommand, "--action", _activeResourceDiagnosticAction];
         _resourceDiagnosticsProc.running = true;
+        _resourceDiagnosticWatchdog.restart();
     }
 
     function requestTopCpuProcesses(callback) {
@@ -123,8 +155,19 @@ QtObject {
         }
 
         onRunningChanged: {
-            if (running)
+            if (running) {
+                _resourceDiagnosticWatchdog.restart();
                 return;
+            }
+
+            _resourceDiagnosticWatchdog.stop();
+            _resourceDiagnosticKillTimer.stop();
+            _resourceDiagnosticSettleTimer.stop();
+
+            if (root._resourceDiagnosticTimedOut) {
+                root._settleTimedOutResourceDiagnostic();
+                return;
+            }
 
             const action = root._activeResourceDiagnosticAction;
 
@@ -139,5 +182,26 @@ QtObject {
 
             root._finishResourceDiagnosticRequest(action, root._readResourceDiagnosticOutput(action, root._resourceDiagnosticStdoutText));
         }
+    }
+
+    property Timer _resourceDiagnosticWatchdog: Timer {
+        interval: root.watchdogMs
+        repeat: false
+        onTriggered: root._onResourceDiagnosticWatchdog()
+    }
+
+    property Timer _resourceDiagnosticKillTimer: Timer {
+        interval: root.terminationGraceMs
+        repeat: false
+        onTriggered: {
+            if (root._resourceDiagnosticsProc.running)
+                root._resourceDiagnosticsProc.signal(9); // SIGKILL escalation
+        }
+    }
+
+    property Timer _resourceDiagnosticSettleTimer: Timer {
+        interval: root.terminationGraceMs + 250
+        repeat: false
+        onTriggered: root._settleTimedOutResourceDiagnostic()
     }
 }

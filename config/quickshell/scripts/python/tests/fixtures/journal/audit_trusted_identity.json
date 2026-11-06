@@ -1,0 +1,21 @@
+{
+  "_TRANSPORT": "audit",
+  "PRIORITY": "6",
+  "__CURSOR": "s+b0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0:0000000060",
+  "__REALTIME_TIMESTAMP": "1733200010000000",
+  "__MONOTONIC_TIMESTAMP": "2910000000",
+  "_BOOT_ID": "b0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0",
+  "_MACHINE_ID": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "_HOSTNAME": "synthetic-host",
+  "MESSAGE": "SYNTHETIC audit(1733200010.000:123): pid=99999 uid=1000 comm=synthetic-worker exe=\"/usr/bin/synthetic-worker\" (fixture)",
+  "_PID": "555",
+  "_UID": "0",
+  "_GID": "0",
+  "_COMM": "systemd-journald",
+  "_EXE": "/usr/lib/systemd/systemd-journald",
+  "_SYSTEMD_UNIT": "systemd-journald.service",
+  "_SYSTEMD_SLICE": "system.slice",
+  "_SYSTEMD_CGROUP": "/system.slice/systemd-journald.service",
+  "_AUDIT_LOGINUID": "1000",
+  "_AUDIT_SESSION": "2"
+}

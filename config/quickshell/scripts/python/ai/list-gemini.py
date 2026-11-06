@@ -3,27 +3,56 @@ import json
 
 import google.generativeai as genai
 
+from credential_transport import (
+    CredentialTransportError,
+    read_credential,
+    redact_secret,
+)
+
 
 def main():
     parser = argparse.ArgumentParser(
         description="List available Gemini models"
     )
     parser.add_argument(
-        "--api_key", required=True, help="Google Gemini API Key"
+        "--credential-stdin",
+        action="store_true",
+        help="Read the API credential from one bounded JSON line on stdin",
+    )
+    # Legacy argv option: rejected without echoing or using its value.
+    parser.add_argument(
+        "--api_key", dest="_argv_api_key", default=None, help=argparse.SUPPRESS
     )
 
     args = parser.parse_args()
 
     result = {"success": False, "models": [], "error": ""}
 
+    if args._argv_api_key is not None:
+        result["error"] = "CREDENTIAL_TRANSPORT_ERROR:ARGV_FORBIDDEN"
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
     try:
-        genai.configure(api_key=args.api_key)
+        credential = read_credential() if args.credential_stdin else ""
+    except CredentialTransportError as exc:
+        result["error"] = str(exc)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
+    if not credential:
+        result["error"] = "MISSING_API_CREDENTIAL"
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
+    try:
+        genai.configure(api_key=credential)
 
         # جلب كل المودلات المتاحة
         all_models = genai.list_models()
 
         for m in all_models:
-            # نحن نهتم فقط بالمودلات التي تدعم توليد المحتوى (Chat)
+            # نحن مهتمون بالمودلات التي تدعم توليد المحتوى (Chat)
             if "generateContent" in m.supported_generation_methods:
                 model_info = {
                     "name": m.name.replace(
@@ -40,7 +69,7 @@ def main():
         result["success"] = True
 
     except Exception as e:
-        result["error"] = str(e)
+        result["error"] = redact_secret(str(e), credential)
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

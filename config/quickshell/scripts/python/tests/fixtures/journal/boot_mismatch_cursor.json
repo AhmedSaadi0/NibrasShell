@@ -1,0 +1,21 @@
+{
+  "_TRANSPORT": "journal",
+  "PRIORITY": "3",
+  "__CURSOR": "s+11111111222222223333333344444444:0000000017",
+  "__REALTIME_TIMESTAMP": "1731100000000000",
+  "__MONOTONIC_TIMESTAMP": "1200000000",
+  "_BOOT_ID": "11111111222222223333333344444444",
+  "_MACHINE_ID": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "_HOSTNAME": "synthetic-host",
+  "_RUNTIME_SCOPE": "system",
+  "SYSLOG_IDENTIFIER": "synthetic-daemon",
+  "MESSAGE": "synthetic record captured during a different boot (fixture)",
+  "_PID": "700",
+  "_UID": "0",
+  "_GID": "0",
+  "_COMM": "synthetic-daemon",
+  "_EXE": "/usr/sbin/synthetic-daemon",
+  "_SYSTEMD_UNIT": "synthetic-daemon.service",
+  "_SYSTEMD_SLICE": "system.slice",
+  "_SYSTEMD_CGROUP": "/system.slice/synthetic-daemon.service"
+}

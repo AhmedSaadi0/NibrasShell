@@ -129,7 +129,10 @@ Singleton {
         _logOutgoingRequest(requestId, args, fullCmd);
 
         const task = component.createObject(root, {
-            "command": fullCmd
+            "command": fullCmd,
+            "environment": (options && options.environment) ? options.environment : ({}),
+            "credential": (options && options.credential !== undefined && options.credential !== null)
+                ? String(options.credential) : ""
         });
 
         task.success.connect(envelope => {

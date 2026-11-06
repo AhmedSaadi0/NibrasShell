@@ -248,8 +248,8 @@ inactiveForeground=${fgInactive}
      * @returns {string[]} The command array.
      */
     function changePlasmaIcons(iconThemeName) {
-        // Uses 'kwriteconfig5' to directly modify the system settings.
-        return ['kwriteconfig5', '--file', 'kdeglobals', '--group', 'Icons', '--key', 'Theme', iconThemeName];
+        // Uses 'kwriteconfig6' to directly modify the system settings.
+        return ['kwriteconfig6', '--file', 'kdeglobals', '--group', 'Icons', '--key', 'Theme', iconThemeName];
     }
 
     /**
@@ -259,7 +259,7 @@ inactiveForeground=${fgInactive}
      * @returns {string[]} The command array.
      */
     function changeKonsoleProfile(profileName) {
-        return ['kwriteconfig5', '--file', 'konsolerc', '--group', 'Desktop Entry', '--key', 'DefaultProfile', profileName];
+        return ['kwriteconfig6', '--file', 'konsolerc', '--group', 'Desktop Entry', '--key', 'DefaultProfile', profileName];
     }
 
     // Applies profile immediately to currently opened Konsole sessions via DBus.
@@ -284,8 +284,13 @@ inactiveForeground=${fgInactive}
     }
 
     function changeGtkColorSchemeTheme(themeName) {
-        // This command sets the theme for both GTK3 and GTK4 in most modern environments.
-        return ['gsettings', 'set', 'org.gnome.desktop.interface', 'color-scheme', `prefer-${themeName}`];
+        let mode = themeName.toString().trim();
+        if (mode === "dark" || mode === "light") {
+            mode = `prefer-${mode}`;
+        } else {
+            mode = "default";
+        }
+        return ['gsettings', 'set', 'org.gnome.desktop.interface', 'color-scheme', mode];
     }
 
     function removeOldGtk4Theme() {
@@ -314,11 +319,11 @@ inactiveForeground=${fgInactive}
     }
 
     function changeCursorTheme(themeName) {
-        return ['kwriteconfig5', '--file', 'kcminputrc', '--group', 'Mouse', '--key', 'cursorTheme', themeName];
+        return ['plasma-apply-cursortheme', themeName];
     }
 
     function changeCursorSize(size) {
-        return ['kwriteconfig5', '--file', 'kcminputrc', '--group', 'Mouse', '--key', 'cursorSize', String(size)];
+        return ['kwriteconfig6', '--file', 'kcminputrc', '--group', 'Mouse', '--key', 'cursorSize', String(size)];
     }
 
     function changeGtkCursorTheme(themeName) {
@@ -336,8 +341,8 @@ inactiveForeground=${fgInactive}
      * @returns {string[]} The command array.
      */
     function changeQtStyle(styleName) {
-        // For KDE Plasma, using kwriteconfig5 is a direct and reliable method.
-        return ['kwriteconfig5', '--file', 'kdeglobals', '--group', 'KDE', '--key', 'widgetStyle', styleName];
+        // For KDE Plasma, using kwriteconfig6 is a direct and reliable method.
+        return ['kwriteconfig6', '--file', 'kdeglobals', '--group', 'KDE', '--key', 'widgetStyle', styleName];
     }
 
     /**

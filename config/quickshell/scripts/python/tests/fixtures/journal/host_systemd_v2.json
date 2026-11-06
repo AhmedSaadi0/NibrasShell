@@ -1,0 +1,21 @@
+{
+  "_TRANSPORT": "journal",
+  "PRIORITY": "3",
+  "__CURSOR": "s+b0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0:0000000051",
+  "__REALTIME_TIMESTAMP": "1733200005000000",
+  "__MONOTONIC_TIMESTAMP": "2905000000",
+  "_BOOT_ID": "b0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0",
+  "_MACHINE_ID": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "_HOSTNAME": "synthetic-host",
+  "_RUNTIME_SCOPE": "system",
+  "SYSLOG_IDENTIFIER": "synthetic-daemon",
+  "MESSAGE": "synthetic error from a system unit (fixture)",
+  "_PID": "721",
+  "_UID": "0",
+  "_GID": "0",
+  "_COMM": "synthetic-daemon",
+  "_EXE": "/usr/sbin/synthetic-daemon",
+  "_SYSTEMD_UNIT": "synthetic-daemon.service",
+  "_SYSTEMD_SLICE": "system.slice",
+  "_SYSTEMD_CGROUP": "/system.slice/synthetic-daemon.service"
+}

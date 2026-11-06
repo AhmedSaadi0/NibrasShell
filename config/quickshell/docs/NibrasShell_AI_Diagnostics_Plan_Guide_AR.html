@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مرجع الخطة البصرية — تشخيصات ذكاء نبراس (NibrasShell AI Diagnostics)</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+  /* Mermaid تهيئة صريحة ثم تشغيل ثم تجهيز عارض التكبير/التمرير لكل مخطط */
+  window.addEventListener('DOMContentLoaded', async function () {
+    if (typeof mermaid === 'undefined') {
+      document.querySelectorAll('.mermaid').forEach(function (b) {
+        b.textContent = '⚠ لم يُحمَّل مكوّن المخططات (تحقق من الاتصال بالإنترنت).';
+      });
+      return;
+    }
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      fontFamily: '"Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif',
+      themeVariables: {
+        fontSize: '18px',
+        background: 'transparent',
+        primaryColor: '#13202b',
+        primaryTextColor: '#e8eef2',
+        primaryBorderColor: '#2dd4bf',
+        lineColor: '#7a93a8',
+        secondaryColor: '#182633',
+        tertiaryColor: '#141e28',
+        noteBkgColor: '#232637',
+        noteTextColor: '#e8eef2',
+        noteBorderColor: '#7a6bd6',
+        actorBkg: '#16202a',
+        actorBorder: '#2dd4bf',
+        actorTextColor: '#e8eef2',
+        signalColor: '#c8d6e0',
+        signalTextColor: '#e8eef2',
+        labelBoxBkgColor: '#16202a',
+        labelBoxBorderColor: '#7a6bd6',
+        labelTextColor: '#e8eef2',
+        loopTextColor: '#e8eef2',
+        activationBkgColor: 'rgba(45,212,191,0.25)',
+        classText: '#e8eef2',
+        attributeBackgroundColorOdd: '#141c24',
+        attributeBackgroundColorEven: '#101820',
+        compositeBackground: '#101820',
+        clusterBkg: 'rgba(45,212,191,0.05)',
+        clusterBorder: 'rgba(45,212,191,0.35)'
+      },
+      flowchart: { curve: 'basis', useMaxWidth: true },
+      sequence: { useMaxWidth: true, mirrorActors: false, actorFontSize: 17, messageFontSize: 17, noteFontSize: 15 }
+    });
+    try {
+      await mermaid.run({ querySelector: '.mermaid' });
+    } catch (e) { console.error('mermaid run failed:', e); }
+    setupDiagramViewer();
+  });
+
+  /* عارض لكل مخطط: أزرار تكبير/تصغير + ملاءمة + 100٪، Ctrl+عجلة، سحب للتمرير، وأشرطة تمرير في الاتجاهين */
+  function setupDiagramViewer() {
+    document.querySelectorAll('.mermaid').forEach(function (box) {
+      var svg = box.querySelector('svg');
+      if (!svg) return;
+      var vb = svg.viewBox && svg.viewBox.baseVal;
+      var rect = svg.getBoundingClientRect();
+      var w = (vb && vb.width && isFinite(vb.width)) ? vb.width : rect.width;
+      var h = (vb && vb.height && isFinite(vb.height)) ? vb.height : rect.height;
+      if (!w || !h) return;
+
+      svg.style.maxWidth = 'none';
+
+      var vp = document.createElement('div');
+      vp.className = 'dz-vp';
+      box.appendChild(vp);
+      vp.appendChild(svg);
+
+      var bar = document.createElement('div');
+      bar.className = 'dz-bar';
+      var defs = { 'in': '+', 'out': '−', 'fit': '⤢', '100': '١٠٠٪' };
+      var tips = { 'in': 'تكبير', 'out': 'تصغير', 'fit': 'ملاءمة عرض الإطار', '100': 'الحجم الأصلي' };
+      Object.keys(defs).forEach(function (a) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.a = a;
+        b.textContent = defs[a];
+        b.title = tips[a];
+        bar.appendChild(b);
+      });
+      var pct = document.createElement('span');
+      pct.className = 'dz-pct';
+      bar.appendChild(pct);
+      box.appendChild(bar);
+
+      var zoom = 1, MIN = 0.25, MAX = 5;
+      function apply() {
+        svg.style.width = (w * zoom) + 'px';
+        svg.style.height = (h * zoom) + 'px';
+        pct.textContent = Math.round(zoom * 100) + '٪';
+      }
+      function setZoom(z) { zoom = Math.min(MAX, Math.max(MIN, z)); apply(); }
+
+      bar.addEventListener('click', function (e) {
+        var t = e.target.closest('button');
+        if (!t) return;
+        var a = t.dataset.a;
+        if (a === 'in') setZoom(zoom * 1.2);
+        else if (a === 'out') setZoom(zoom / 1.2);
+        else if (a === 'fit') { setZoom((vp.clientWidth - 20) / w); vp.scrollLeft = 0; vp.scrollTop = 0; }
+        else if (a === '100') { setZoom(1); vp.scrollLeft = 0; vp.scrollTop = 0; }
+      });
+
+      /* Ctrl + عجلة الفأرة = تكبير/تصغير */
+      vp.addEventListener('wheel', function (e) {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        setZoom(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+      }, { passive: false });
+
+      /* السحب بالفأرة = تمرير أفقي (يمين/يسار)؛ الكرت يتمدد عمودياً تلقائياً */
+      var drag = null;
+      vp.addEventListener('pointerdown', function (e) {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        drag = { x: e.clientX, y: e.clientY, sl: vp.scrollLeft, st: vp.scrollTop };
+        vp.classList.add('dragging');
+        e.preventDefault();
+      });
+      window.addEventListener('pointermove', function (e) {
+        if (!drag) return;
+        vp.scrollLeft = drag.sl - (e.clientX - drag.x);
+        vp.scrollTop = drag.st - (e.clientY - drag.y);
+      });
+      window.addEventListener('pointerup', function () {
+        if (drag) { drag = null; vp.classList.remove('dragging'); }
+      });
+
+      apply();
+    });
+  }
+</script>
+<style>
+  :root {
+    --bg: #0b0e13;
+    --card: #121923;
+    --card-2: #0f151d;
+    --ink: #e8eef2;
+    --ink-dim: #9db1c0;
+    --accent: #2dd4bf;
+    --accent-2: #7a6bd6;
+    --warn: #f0b429;
+    --danger: #ef4444;
+    --ok: #34d399;
+    --border: rgba(150,180,200,0.14);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: "Segoe UI", "Noto Sans Arabic", Tahoma, Arial, sans-serif;
+    line-height: 1.75; font-size: 15.5px;
+    background:
+      radial-gradient(1200px 500px at 85% -5%, rgba(45,212,191,0.08), transparent 60%),
+      radial-gradient(900px 420px at 10% 10%, rgba(122,107,214,0.07), transparent 55%);
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 22px 80px; }
+  header.hero { text-align: center; padding: 34px 10px 18px; }
+  header.hero h1 { font-size: 30px; margin: 0 0 10px; letter-spacing: 0.2px; }
+  header.hero h1 span { color: var(--accent); }
+  .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 6px; }
+  .badge {
+    border: 1px solid var(--border); background: var(--card); color: var(--ink-dim);
+    border-radius: 999px; padding: 4px 12px; font-size: 12.5px;
+  }
+  .badge b { color: var(--ink); font-weight: 600; }
+  section.card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 22px 24px; margin: 22px 0; box-shadow: 0 6px 30px rgba(0,0,0,0.25);
+  }
+  section.card.alt { background: var(--card-2); }
+  h2.sec {
+    font-size: 21px; margin: 0 0 14px; padding-bottom: 10px;
+    border-bottom: 2px solid transparent;
+    border-image: linear-gradient(90deg, var(--accent), transparent) 1;
+  }
+  h2.sec small { color: var(--ink-dim); font-size: 13px; font-weight: 400; margin-inline-start: 8px; }
+  h3 { font-size: 16.5px; color: var(--accent); margin: 18px 0 8px; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 6px 0; padding-inline-start: 22px; }
+  li { margin: 4px 0; }
+  code, pre {
+    font-family: "Cascadia Code", Consolas, "DejaVu Sans Mono", monospace;
+    background: #0a0f14; border: 1px solid var(--border); border-radius: 8px;
+  }
+  code { padding: 1px 6px; font-size: 13px; color: #bfe8e0; }
+  pre { padding: 14px 16px; overflow: auto; direction: ltr; text-align: left; font-size: 13px; line-height: 1.55; color: #c9d8e2; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: right; vertical-align: top; }
+  th { background: #0e161e; color: var(--accent); font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .mermaid {
+    direction: ltr; text-align: center; background: #0a0f15;
+    border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+    position: relative; overflow: hidden; margin: 14px 0;
+  }
+  /* منفذ التمرير: الكرت يتمدد عمودياً بمقدار المخطط (بلا شريط رأسي) والتمرير أفقياً يمين/يسار فقط */
+  .dz-vp {
+    overflow-x: auto; overflow-y: hidden; width: 100%;
+    padding: 6px; border-radius: 8px; cursor: grab;
+    scrollbar-color: #2b3c4a rgba(255,255,255,0.04);
+  }
+  .dz-vp svg { display: block; margin: 6px auto; }
+  .dz-vp.dragging { cursor: grabbing; user-select: none; }
+  .dz-vp::-webkit-scrollbar { height: 12px; width: 12px; }
+  .dz-vp::-webkit-scrollbar-corner { background: transparent; }
+  .dz-vp::-webkit-scrollbar-thumb { background: #2b3c4a; border-radius: 6px; border: 3px solid #0a0f15; }
+  .dz-vp::-webkit-scrollbar-thumb:hover { background: #3a5064; }
+  .dz-vp::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); border-radius: 6px; }
+  /* شريط أزرار التكبير العائم */
+  .dz-bar {
+    position: absolute; top: 8px; inset-inline-end: 10px; z-index: 6;
+    display: flex; align-items: center; gap: 3px;
+    background: rgba(10,15,21,0.92); border: 1px solid var(--border);
+    border-radius: 10px; padding: 3px; backdrop-filter: blur(4px);
+  }
+  .dz-bar button {
+    cursor: pointer; border: 1px solid transparent; background: transparent;
+    color: var(--ink-dim); font-family: inherit; font-size: 13px; font-weight: 700;
+    min-width: 30px; height: 26px; border-radius: 7px; padding: 0 7px;
+  }
+  .dz-bar button:hover { color: var(--accent); border-color: var(--border); background: rgba(45,212,191,0.08); }
+  .dz-pct { color: var(--ink-dim); font-size: 11.5px; min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 840px) { .grid2 { grid-template-columns: 1fr; } }
+  .callout {
+    border-inline-start: 4px solid var(--accent); background: rgba(45,212,191,0.06);
+    border-radius: 10px; padding: 12px 16px; margin: 12px 0;
+  }
+  .callout.warn { border-inline-start-color: var(--warn); background: rgba(240,180,41,0.07); }
+  .callout.danger { border-inline-start-color: var(--danger); background: rgba(239,68,68,0.07); }
+  .callout.ok { border-inline-start-color: var(--ok); background: rgba(52,211,153,0.07); }
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .toc a {
+    text-decoration: none; color: var(--ink-dim); border: 1px solid var(--border);
+    background: var(--card); padding: 5px 12px; border-radius: 999px; font-size: 13px;
+    transition: all .15s ease;
+  }
+  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+  .pill { display: inline-block; border-radius: 999px; padding: 1px 9px; font-size: 11.5px; font-weight: 600; margin-inline-start: 6px; }
+  .pill.allowed { background: rgba(52,211,153,0.15); color: var(--ok); }
+  .pill.rejected { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .pill.unverified { background: rgba(240,180,41,0.15); color: var(--warn); }
+  .pill.quarantine { background: rgba(122,107,214,0.18); color: #c4b5fd; }
+  .pill.neutral { background: rgba(150,180,200,0.12); color: var(--ink-dim); }
+  .lbl { font-family: Consolas, monospace; font-size: 12.5px; color: #bfe8e0; }
+  .en { color: #8fb8ad; font-size: 11.5px; font-weight: 600; direction: ltr; unicode-bidi: embed; }
+  footer { text-align: center; color: var(--ink-dim); font-size: 13px; padding: 26px 10px 6px; }
+  a { color: var(--accent); }
+  .num { color: var(--accent-2); font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+
+<header class="hero">
+  <h1>🧭 دليل بصري لخطة <span>تشخيصات الذكاء في نبراس</span></h1>
+  <div class="badges">
+    <span class="badge">المصدر الحاكم: <b>docs/NibrasShell_AI_Diagnostics_Plan_vFinal.md</b></span>
+    <span class="badge">التاريخ: <b>2026-11-02</b></span>
+    <span class="badge">نوع الملف: <b>مرجع مشتق — عند التعارض يسود ملف الخطة</b></span>
+    <span class="badge">بصمة المصدر: <b class="lbl">d8fe2fb93341f2c1…c254</b></span>
+  </div>
+  <div class="toc">
+    <a href="#s1">١ · المشكلة والحل</a>
+    <a href="#s2">٢ · القواعد الحاكمة</a>
+    <a href="#s3">٣ · خريطة الأنابيب المستهدفة</a>
+    <a href="#s4">٤ · تسلسل رحلة الإقلاع</a>
+    <a href="#s5">٥ · منطق محرك السياسة</a>
+    <a href="#s6">٦ · المكوّنات (صنوف)</a>
+    <a href="#s7">٧ · علاقات نموذج الحادثة</a>
+    <a href="#s8">٨ · حالات التحقق</a>
+    <a href="#s9">٩ · المراحل والبوابات</a>
+    <a href="#s10">١٠ · حالات السياسة والميزانيات</a>
+    <a href="#s11">١١ · العقود الثلاثة</a>
+    <a href="#s12">١٢ · بروتوكول التسليم</a>
+    <a href="#s13">١٣ · خريطة الملفات</a>
+    <a href="#s14">١٤ · ما ثبت اليوم على المضيف</a>
+    <a href="#s15">١٥ · مسرد المصطلحات</a>
+  </div>
+</header>
+
+<!-- ═══════════════ 1. المشكلة والحل ═══════════════ -->
+<section class="card" id="s1">
+  <h2 class="sec">١ · المشكلة والحل <small>الملخص التنفيذي — Executive Summary</small></h2>
+  <div class="grid2">
+    <div class="callout danger">
+      <h3 style="margin-top:0">الحالي — سلسلة خطر</h3>
+      <ul>
+        <li>الكشط الحالي (Log Scrape) بصيغة <code>short-iso</code> مع <code>‎-p 3</code>: تُفقد كل الحقول الموثوقة، ويُفوَّت مستوى التحذير (٤) كلياً لأن <span class="lbl">-p 3 = err</span> فما فوق.</li>
+        <li>نص خام يُدفع لنموذج لغوي في نداء أحادي بلا أي أدوات تحقق.</li>
+        <li>النموذج يُخوَّل فعلياً باكتشاف مدير الحزم ومكان تشغيل العملية من جداول أسماء ثابتة.</li>
+        <li>مخرجاته تصل الواجهة كما هي: أوامر shell قابلة للنسخ دفعة واحدة، ومبادئ افتراضية مفتوحة الفشل عند غياب الحقول.</li>
+      </ul>
+    </div>
+    <div class="callout ok">
+      <h3 style="margin-top:0">المستهدف — أدلة أولاً</h3>
+      <ul>
+        <li>جمع بنيوي محدود (Structured Bounded Collection) بـ <span class="lbl">--output=json</span> يحفظ الحقول الموثوقة (Trusted Fields) والمؤشر (Cursor).</li>
+        <li>اكتشاف حتمي (Deterministic Discovery): فصل <b>النقل (Transport)</b> عن <b>المُرسِل (Record Sender)</b> عن <b>الموضوع الموصوف (Referenced Subject)</b>، وثلاثية cgroup (Cgroup Trio) بمصادر مُؤرَّخة وموسومة المصدر.</li>
+        <li>نموذج مقيَّد: لا يُصرِّح هوية، ولا يصدر أوامر؛ يقترح إصلاحاً (Proposed Remediation) عبر <span class="lbl">guidance_code</span> يصدُر نصُّه من قوالب الخلفية (Guidance Templates).</li>
+        <li>طبقة سياسة (Policy Engine) رافضة افتراضياً (Default-Deny)، ثم واجهة إضافية تعرض الشواهد والقرارات بشفافية.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout">
+    <b>الحالة المحورية الحية (Motivating Case):</b> يُدار <span class="lbl">open-webui</span> كحاوية Podman بدون جذور على هذا الجهاز؛ وكل الرقع التاريخية الخاطئة (تثبيت بايثون على المستضيف، وحدة systemd مستضيفة) أصبحت مستحيلة هيكلياً في التصميم المستهدف.
+  </div>
+</section>
+
+<!-- ═══════════════ 2. القواعد الحاكمة ═══════════════ -->
+<section class="card alt" id="s2">
+  <h2 class="sec">٢ · القواعد الحاكمة <small>المبادئ العشرة وتنفيذها البنيوي — Governing Principles</small></h2>
+  <table>
+    <tr><th style="width:22%">قاعدة</th><th>كيف تُفرض بنيوياً</th></tr>
+    <tr><td>حقائق حتمية <small class="en">Deterministic Facts</small></td><td>وحدة الاكتشاف تُنتج الهوية؛ النموذج لا يملك حق التصريح، فقط الاستشهاد بمعرّفات الشواهد.</td></tr>
+    <tr><td>المجهول مواطن من الدرجة الأولى <small class="en">First-Class Unknowns</small></td><td><span class="lbl">UNKNOWN / AMBIGUOUS / UNAVAILABLE</span> حالات واجهة نهائية — لا مسار شيفرة يعيد التصنيف إلى "مضيف" عند انعدام الدليل.</td></tr>
+    <tr><td>الفشل المغلق <small class="en">Fail-Closed</small></td><td>محرك سياسة يرفض افتراضياً؛ ولا يوجد فرع شيفرة يرمّم من عدم الأدلة إلى تصنيف مضيف أو نواة.</td></tr>
+    <tr><td>نسب الأدلة <small class="en">Evidence Provenance</small></td><td>كل شاهد يحمل مصدره وقوّته وزمن التقاطه؛ النموذج مُلزَم بالاستشهاد.</td></tr>
+    <tr><td>القراءة أولاً <small class="en">Read-Only First</small></td><td>قوائم سماح الإصدار الأول: أدوات قراءة فقط + إصلاح مقترح (Proposed Remediation) + رموز قوالب خلفية — لا شيء آخر.</td></tr>
+    <tr><td>أقل تخصيص <small class="en">Least Privilege</small></td><td>مسار المستخدم ذاته؛ لا sudo ولا تحويل مستخدم؛ الأخطاء تظهر كحالات فشل مسماة.</td></tr>
+    <tr><td>حدود ثقة <small class="en">Trust Boundaries</small></td><td>نص السجل و<span class="lbl">cmdline</span> ومخرجات الأدوات بيانات محصورة ومُطيَّرة؛ لا شيء يُقرأ كتعليمات.</td></tr>
+    <tr><td>عمل مقيَّد <small class="en">Bounded Autonomy</small></td><td>≤2 طلب أداة (≤1 لكل دور أدلة) و≤4 نداءات نموذج (A,B أدلة · C تشخيص نهائي · D إصلاح ≤1).</td></tr>
+    <tr><td>التوافق الرجعي <small class="en">Backward Compatibility</small></td><td>المظروف الخلفي (Envelope) ثابت الشكل + مُهايئتا Legacy/New (Adapters)؛ سلوك النسخ القديم معطَّل عمداً وموثَّق.</td></tr>
+    <tr><td>قرارات ملحوظة <small class="en">Audited Decisions</small></td><td>كل قرار سياسي يُسجَّل بأسبابه ومعرّف ارتباط (uuid4) عبر الجمع والاكتشاف والسياسة والواجهة.</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════════ 3. الخريطة المستهدفة ═══════════════ -->
+<section class="card" id="s3">
+  <h2 class="sec">٣ · خريطة الأنابيب المستهدفة <small>الطبقات الأربع من الأدلة إلى الواجهة — Target Pipeline</small></h2>
+  <div class="mermaid">
+flowchart RL
+    subgraph L1["الطبقة 1 — الأدلة (Evidence) · حتمية"]
+        A["‎journalctl ‎--output=json<br/>نافذة محدودة: ‎-b 0 -p warning -n N"] --> B["المُجمِّع C1 (Collector)<br/>حدود صغيرة مقيّدة<br/>المؤشر شفاف يُمرَّر حرفياً"]
+        B --> C["اكتشاف بيئة التشغيل C2 (Runtime Discovery)<br/>فصل النقل / المُرسِل / الموضوع<br/>ثلاثي cgroup بمصادر منفصلة<br/>تأهيل هوية زمن-الحدث"]
+        subgraph SURV["مسح النظام C3 (System Survey) · مخزَّن ومحدود"]
+            S1["التوزيع ومدير الحزم"]
+            S2["الوحدات النظامية والمستخدمية<br/>النشطة والمثبتة"]
+            S3["الحاويات العاملة · بدون جذر"]
+        end
+        C --> D["التنقية C4 (Redaction)<br/>أسرار · cmdline · البيئة مرفوضة افتراضياً"]
+        SURV --> D
+    end
+    D --> E["المُطبِّع C5 (Normalizer)<br/>نموذج الحادثة nibras.incident/v1"]
+    E --> F["المنسِّق C6 (Orchestrator) · محدود<br/>≤4 نداءات نموذج · أدوار مقيدة"]
+    F --> G1["أدوات القراءة فقط C7 (Read-Only Tools)<br/>inspect_process · inspect_container<br/>inspect_unit · journal_query"]
+    G1 -. "مخرجات الأدوات = بيانات فقط" .-> F
+    F --> I["مدقق العقد C8 (Contract Validator)<br/>أنماط · مراجع شفافة · أنواع"]
+    I -- "غير صالح" --> F2["إعادة إصلاح واحدة D<br/>محفوظة الحدود"]
+    F2 --> F
+    I -- "صالح" --> J["محرك السياسة C9 (Policy Engine)<br/>ربط الهدف من الحادثة فقط<br/>مصفوفة نطاق × إجراء · رفض افتراضي"]
+    J --> K1["الحالات الأربع (Policy Statuses)<br/>TOOL_REQUEST_ALLOWED · GUIDANCE_VALIDATED<br/>POLICY_REJECTED · ANALYSIS_UNVERIFIED"]
+    K1 --> L["الواجهة C10 (QML Presentation) · إضافية<br/>شارة تحقق · شواهد · قرار مرئي<br/>الأوامر الوراثية معزولة (Quarantined): النسخ معطَّل"]
+    subgraph H["قوالب الإرشاد (Guidance Templates)"]
+      T["قوالب خلفية مملوكة C9<br/>G_EXPLAIN_ONLY · G_REVIEW_CONTAINER_SOT<br/>G_REVIEW_UNIT_STATE · G_SOFTWARE_UPDATE_REVIEW"]
+    end
+    J -. "يستدعي قالباً بعد مطابقة الرمز" .-> T
+  </div>
+  <div class="callout warn">
+    <b>الأدلة ليست تنفيذاً (Evidence ≠ Enforcement):</b> المرحلتان ١ و٢ تُحسِّنان السياق وتقلّلان التصنيف الخاطئ، لكنهما لا تُجعلان النموذج آمناً؛ الخطر لا يُعد مُحتَوى إلا بعد فرض سياسة المرحلة ٤ وطرد النص غير الموثوق من الواجهة في المرحلة ٥.
+  </div>
+</section>
+
+<!-- ═══════════════ 4. سيناريو الإقلاع ═══════════════ -->
+<section class="card alt" id="s4">
+  <h2 class="sec">٤ · تسلسل رحلة الإقلاع <small>مع أدوار النداءات والعدّادات — Boot Flow Sequence</small></h2>
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant TA as محلل الإقلاع (Boot Analyzer)
+    participant AIS as خدمة الذكاء (AiService)
+    participant TASK as غلاف العملية (AiTask Process)
+    participant PY as main.py
+    participant COL as المُجمِّع (Collector)
+    participant DISC as الاكتشاف (Discovery)
+    participant RED as التنقية (Redaction)
+    participant ORCH as المنسِّق (Orchestrator)
+    participant LLM as النموذج (Local LLM)
+    participant POL as محرك السياسة (Policy Engine)
+    participant UI as البطاقات (Cards)
+
+    Note over TA: بعد ٣ ثوانٍ من إقلاع الواجهة
+    TA->>AIS: إرسال طلب تحليل الإقلاع
+    AIS->>TASK: إنشاء مهمة العملية
+    TASK->>PY: إطلاق بوسائط argv فقط دون حشو نصي (no prompt stuffing)
+    PY->>COL: نافذة json محدودة (Bounded Window -p warning)
+    COL-->>PY: سجلات بحقول موثوقة (Trusted Fields) ومؤشر شفاف (Cursor)
+    PY->>DISC: فصل النقل/المُرسِل/الموضوع ثم إشهاد هوية زمن-الحدث (Event-Time Attestation)
+    DISC-->>PY: مطالبات منفصلة (Per-Entity Claims) بحدودها معلنة
+    PY->>RED: تنقية الأسرار (Secret Redaction) وتضييق cmdline
+    PY->>ORCH: حادثة v1 (Incident) + مسح النظام (Survey)
+    ORCH->>LLM: النداء A (Call A) — الحادثة بيانات محصورة بإطار صريح
+    LLM-->>ORCH: طلب أداة واحد كحد أقصى (tool_request) + أسئلة النقص (Missing Evidence)
+    ORCH->>DISC: تنفيذ أداة مرخَّصة (Whitelisted) بمرجع شفاف (Opaque Ref)
+    DISC-->>ORCH: نتيجة مكتوبة (بيانات حصراً)
+    ORCH->>LLM: النداء B (Call B) — أدلة إضافية أو طلب أداة ثانٍ اختياري
+    LLM-->>ORCH: التشخيص النهائي v1 (Final Diagnosis) مع مراجعه (Refs)
+    Note over ORCH,LLM: أدوار النداءات — A وB دورا أدلة (≤1 طلب أداة لكل منهما) · C تشخيص نهائي بلا أدوات · D إصلاح ≤1 اختياري — الإجمالي ≤4 نداءات و ≤2 طلب أدوات
+    ORCH->>POL: تحقُّق من طلب الأداة والإصلاح المقترح (Policy Evaluation)
+    POL-->>ORCH: TOOL_REQUEST_ALLOWED أو GUIDANCE_VALIDATED أو POLICY_REJECTED أو ANALYSIS_UNVERIFIED مع الأسباب
+    PY-->>TASK: المظروف الموحَّد (Envelope: success/response/updated_history/error)
+    TASK-->>AIS: نشر المظروف (Envelope)
+    AIS-->>TA: الرد المُطبَّع
+    TA->>UI: بطاقات بشارات (Badges) وشواهد (Evidence) وقرار مرئي — وبدون زر نسخ للأمر غير المُتحقَّق منه
+  </div>
+</section>
+
+<!-- ═══════════════ 5. منطق محرك السياسة ═══════════════ -->
+<section class="card" id="s5">
+  <h2 class="sec">٥ · منطق محرك السياسة <small>من مُخرَج النموذج إلى حالة نهائية — Policy Decision Logic</small></h2>
+  <div class="mermaid">
+flowchart TB
+    M["ردّ النموذج (Model Response) بعد اجتياز مدقق العقد"] --> T{"نوع المُخرَج؟"}
+    T -- "tool_request" --> TV{"الأداة في قائمة السماح؟<br/>المرجع شفاف صادر عن الخلفية؟<br/>الوسائط صحيحة النوع والحد؟"}
+    TV -- "مطابقة" --> S1["TOOL_REQUEST_ALLOWED<br/>تنفيذ قراءة فقط ضمن الكوتات (Read-Only, Within Budget)"]
+    TV -- "رفض" --> S3["POLICY_REJECTED + أسباب مرئية"]
+    T -- "proposed_remediation" --> GV{"النوع في قائمة الإصلاح المسموحة؟<br/>رمز الإرشاد مسجَّل في السجل؟<br/>نوع الهدف والأدلة الدُنيا مطابقة للقالب؟"}
+    GV -- "مطابقة" --> S2["GUIDANCE_VALIDATED<br/>الخلفية تعرض نص القالب (Template) بنفسها"]
+    GV -- "بلا اقتراح إصلاح" --> S4["ANALYSIS_UNVERIFIED<br/>يُعرض بوصفه تحليلاً نموذجياً غير موثوق (Model-Only)"]
+    GV -- "رفض" --> S3
+    S1 --> R["عرض القرار في الواجهة<br/>ولا تعني هذه الحالات أبداً أن الترميم نُفِّذ"]
+    S2 --> R
+    S3 --> R
+    S4 --> R
+  </div>
+  <div class="callout">
+    سجلات القرار مُفصَّلة لكل أثر: قائمة <span class="lbl">tool_decisions[]</span> لكل طلب أداة، وسجل <span class="lbl">guidance_decision</span> واحد لتقديم الإصلاح — وليست حالة واحدة عامة على الرد كله.
+  </div>
+</section>
+
+<!-- ═══════════════ 6. المكوّنات ═══════════════ -->
+<section class="card alt" id="s6">
+  <h2 class="sec">٦ · المكوّنات كأصناف <small>مسؤوليات وحدود صلبة — §7 بالخطة (Components as Classes)</small></h2>
+  <div class="mermaid">
+classDiagram
+    class JournalCollector {
+        +collect(window) List
+        -mapFields(record)
+        -enforceCaps()
+    }
+    class RuntimeDiscovery {
+        +discover(record) DiscoveryResult
+        -extractEventTimeFields()
+        -readCurrentProcCgroup()
+        -qualifyPidVsEvent()
+        -verifyContainerAssociation()
+    }
+    class SystemSurvey {
+        +snapshot() dict
+    }
+    class Redactor {
+        +scrub(evidence) dict
+        +redactionCounts() dict
+    }
+    class IncidentNormalizer {
+        +assemble(parts) Incident
+    }
+    class Orchestrator {
+        +run(incident) Response
+        -callRoleCounters()
+        -toolRequestCounter()
+        -deadlineSupervisor()
+    }
+    class ReadOnlyTools {
+        +inspect_process(ref)
+        +inspect_container(ref)
+        +inspect_unit(ref)
+        +journal_query(ref)
+    }
+    class ContractValidator {
+        +validate(text) Contract
+    }
+    class PolicyEngine {
+        +evaluateToolRequest()
+        +evaluateRemediation()
+        -bindOpaqueRef()
+        -gateMatrix()
+    }
+    class GuidanceTemplates {
+        +render(code) str
+    }
+    class QMLLegacyAdapter {
+        +renderCard()
+    }
+    class QMLNewAdapter {
+        +renderCard()
+    }
+    note for JournalCollector "لا يفكك نصاً خاماً؛ المؤشر يمر حرفياً مع سقوط صريح إلى نافذة محدودة عند تعذُّر التثبيت أو قلب الإقلاع"
+    note for RuntimeDiscovery "الخوارزمية حتمية مرتَّبة؛ لا تُفسِّر الماضي من الحاضر؛ ولا تُوسَّع من نطاق إلى آخر"
+    note for Orchestrator "A وB أدلة · C تشخيص نهائي بلا طلب أدوات · D إصلاح ≤1 · كل الأدوار محصورة عدّاً (Counted)"
+    note for ReadOnlyTools "مراجع شفافة فقط؛ لا يقرأ بيئة العملية؛ مهلة 5 ثوانٍ مع قتل ثم إعادة جدولة"
+    note for ContractValidator "قواعد نسخ مشددة؛ أي مفتاح command أو script أو steps مرفوض"
+    note for PolicyEngine "رفض افتراضي؛ النص العملي يصدر من القوالب حصراً ولا يُركَّب من نثر النموذج"
+    note for QMLLegacyAdapter "يعرض الأمر النموذجي كنص معزول غير قابل للنسخ مع شارة ظاهرة"
+    note for QMLNewAdapter "يعرض فقط ما أعادته الخلفية مُتحقَّقاً منه؛ النثر النموذجي موسوم ولا يُنسخ كتعليمات"
+    IncidentNormalizer o-- JournalCollector
+    IncidentNormalizer o-- RuntimeDiscovery
+    IncidentNormalizer o-- SystemSurvey
+    IncidentNormalizer o-- Redactor
+    Orchestrator --> ContractValidator : "نص نموذجي غير موثوق"
+    Orchestrator -- ReadOnlyTools : "≤2 طلبات مثبّتة"
+    Orchestrator --> PolicyEngine
+    PolicyEngine ..> GuidanceTemplates : "يستدعي بعد مطابقة الرمز"
+    QMLLegacyAdapter ..> PolicyEngine : "يعرض قراراته"
+    QMLNewAdapter ..> PolicyEngine : "يعرض قراراته"
+  </div>
+  <div class="callout">
+    <b>قاعدة عامة:</b> لا يستطيع أي مكوّن أن يُنتج نص النموذج ويستهلكه كحقيقة؛ فقط المدقق ومحرك السياسة يستهلكانه — وبوصفه بيانات للتحقق.
+  </div>
+</section>
+
+<!-- ═══════════════ 7. علاقات نموذج الحادثة ═══════════════ -->
+<section class="card" id="s7">
+  <h2 class="sec">٧ · علاقات نموذج الحادثة <small>نموذج الكيانات v1 — Incident Entity Relations</small></h2>
+  <div class="mermaid">
+erDiagram
+    INCIDENT ||--|| RECORD_SENDER : "يحمل كيان المُرسِل"
+    INCIDENT |o--o| REFERENCED_SUBJECT : "الموضوع الموصوف إن تحدد"
+    INCIDENT |o--o| CONTAINER_ASSOCIATION : "رابط بناء مستقل"
+    INCIDENT ||--|| WORKLOAD_IDENTITY : "كيان مستقل غالباً مجهول"
+    INCIDENT ||--o{ EVIDENCE_REF : "يستشهد"
+    INCIDENT ||--o{ CGROUP_OBSERVATION : "ثلاثية منفصلة المصادر"
+    CONTAINER_ASSOCIATION }o--o{ EVIDENCE_REF : "يُثبَت بمراجعها"
+    RECORD_SENDER ||--o| CGROUP_OBSERVATION : "زمن-حدث للمُرسِل"
+    CONTAINER_ASSOCIATION {
+        string ref "مرجع شفاف صادر عن الخلفية"
+        string runtime "podman أو غيره"
+        string full_id "معرّف كامل 64 خانة سداسية"
+        string status "حالة المطالبة"
+        string time_scope "أحدث أو الحالي"
+        string init_pid "اختياري"
+    }
+    RECORD_SENDER {
+        int pid
+        string role "WORKLOAD_APPEARANCE أو CONMON أو STREAM_OWNER"
+        string runtime_domain "نطاق عملية المُرسِل ذاته"
+        string identity_status "حالة الهوية"
+    }
+    WORKLOAD_IDENTITY {
+        string state "غالباً UNKNOWN"
+        string reason_codes "أسباب صريحة"
+    }
+    CGROUP_OBSERVATION {
+        string kind "event_sender أو event_subject أو current_proc"
+        string path
+        string provenance
+        int captured_at "زمن التقاط"
+    }
+    EVIDENCE_REF {
+        string id
+        string origin "journal أو proc أو runtime_query أو survey"
+        string strength
+        int captured_at
+    }
+  </div>
+  <div class="callout warn">
+    <b>لا نطاق تشغيل عام على مستوى الحادثة:</b> النطاقات تعود إلى كيانات العمليات بنفسها؛ ارتباط الحاوية علاقة مستقلة لا يصح خلطها بشغل عملية داخل الحاوية — وهذا مخالفة لمفهوم «حاوية = عملية».
+  </div>
+</section>
+
+<!-- ═══════════════ 8. حالات التحقق ═══════════════ -->
+<section class="card alt" id="s8">
+  <h2 class="sec">٨ · حالات التحقق لكل مطالبة <small>خلط المُرسِل (Record Sender) والموضوع ممنوع — Claim Verification</small></h2>
+  <div class="mermaid">
+stateDiagram-v2
+    direction LR
+    state "مرشّح CANDIDATE" as cand
+    state "تم التحقق VERIFIED" as ok
+    state "غامض AMBIGUOUS" as amb
+    state "غير متاح UNAVAILABLE" as un
+    state "مثيل حالي عتيق STALE_CURRENT_INSTANCE" as stale
+    state "هوية تاريخية غير متاحة HISTORICAL_IDENTITY_UNAVAILABLE" as gone
+    [*] --> cand : بصِمة cgroup أو وحدة موثوقة
+    cand --> ok : فحصٌ عبري مطابق بقواعد المطالبة
+    cand --> amb : تعارض أو شحّ أدلة أو حدود وصول
+    ok --> amb : تعارض لاحق بالشواهد
+    cand --> un : فقدان أو إذن أو نفاد وقت
+    cand --> stale : الانطلاق الحالي بعيد زمنياً عن الحدث
+    cand --> gone : خروج PID مع انعدام شواهد زمن-الحدث
+    stale --> [*]
+    gone --> [*]
+    un --> [*]
+    amb --> [*]
+  </div>
+  <table>
+    <tr><th>مطالبة (Claim)</th><th>ما يكفي لـ VERIFIED</th><th>ما يُرفض كدليل</th></tr>
+    <tr><td>هوية المُرسِل (Record Sender)</td><td>حقول اعتمادات journald الموثوقة؛ مع المقارنة الحقيقية (ق ٨.٣ خطوة ٤)</td><td>لقطة ‎/proc حاضرة وحدها؛ محتوى جسم التدقيق وحده؛ مصدر واحد غير موثوق</td></tr>
+    <tr><td>ارتباط وحدة المستضيف (Host Unit)</td><td>اتفاق <span class="lbl">_SYSTEMD_UNIT</span> مع <span class="lbl">_SYSTEMD_CGROUP</span> — وهما فئة واحدة من الأدلة بالنِّسب</td><td>عدُّهما مصدرين مستقلين — هما أصلهما واحد</td></tr>
+    <tr><td>ارتباط الحاوية (Container Association)</td><td>معرّف كامل زمن-حدث + استعلام مصدر التشغيل مطابق بالمعرّف نفسه</td><td>مطابقة اسم/وسم؛ وتفوُّت الاسم لا يُثبت "ليست حاوية"</td></tr>
+    <tr><td>هوية الحمولة الداخلية (Workload Identity)</td><td>آليتا شاهد مستقلتان — مثلاً مدّ PID عبر زمن-الحدث مع تأكيد متقاطع من مصدر التشغيل</td><td>هوية conmon؛ مالك خط النقل؛ الارتباط المُحقَّق وحده؛ تطابق اسم عملية</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════════ 9. المراحل ═══════════════ -->
+<section class="card" id="s9">
+  <h2 class="sec">٩ · المراحل والبوابات <small>إيقاف يدوي بعد كل مرحلة — Phases &amp; Acceptance Gates</small></h2>
+  <div class="mermaid">
+flowchart TB
+    P0["المرحلة 0 — تدقيق مساحة العمل + احتواء الأوامر الوراثية فوراً (Audit + Containment)"]
+    G0{"بوابة 0 — أوامر النموذج معزولة غير نافذة · واجهات وحالات موثقة · مُثبّتات اصطناعية تُعيد الحالة المرجعية"}
+    P0 --> G0
+    G0 -- "PASS ثم توقف صارم — بيد المستخدم" --> P1["المرحلة 1 — أساس اكتشاف التشغيل بلا LLM (Discovery Foundations)"]
+    G1{"بوابة 1 — مصفوفة اكتشاف كاملة خضراء بلا رجوع للمستضيف ولا خلط بين conmon والحمولة"}
+    P1 --> G1
+    G1 -- "PASS ثم توقّف" --> P2["المرحلة 2 — تجميع بنيوي + نموذج حادثة معياري (Structured Collection)"]
+    G2{"بوابة 2 — المظروف (Envelope JSON) ونموذج حادثة يعملان من الطرف إلى الطرف بمطلوب واضح"}
+    P2 --> G2
+    G2 -- "PASS ثم توقّف" --> P3["المرحلة 3 — عقود نموذج صارمة + تنسيق محدود (Strict Contracts + Bounded Orchestration)"]
+    G3{"بوابة 3 — كل مسارات الفشل آمنة: حقن نصي · رموز عشوائية · تجاوز حدود الدور والوقت"}
+    P3 --> G3
+    G3 -- "PASS ثم توقّف" --> P4["المرحلة 4 — سياسة حتمية (Deterministic Policy)"]
+    G4{"بوابة 4 — كل ما هو مشتبه أو منتفٍ أو عتيق مرفوض، أو مرافق لعلامة عدم موثوقية"}
+    P4 --> G4
+    G4 -- "PASS ثم توقّف" --> P5["المرحلة 5 — تكامل QML بمُهايئتين (QML Integration, Dual Adapters)"]
+    G5{"بوابة 5 — كتمال العقد الشكلي مع سلوك ترحيل موثق لا يُخدع المستخدم"}
+    P5 --> G5
+    G5 -- "PASS ثم توقّف" --> P6["المرحلة 6 — ترسيخ الانحدار وبوابة الإصدار (Regression Hardening)"]
+    G6{"بوابة 6 — AC 1 إلى 17 قابلة للتحقق بآليتين مستقلتين · صفر تغيير تلقائي للحالة"}
+    P6 --> G6
+  </div>
+  <div class="callout warn">
+    <b>تنظيم الإيقاف:</b> المرحلتان 3 و4 لا تُوازيان (4 يعتمد على عقد المراجع الشفافة من 3). وبعد كل مرحلة يقدّم الوكيل تقريره في المحادثة ثم يتوقف؛ ولا أوامر git إطلاقاً — وإلا كان خرقاً للبروتوكول.
+  </div>
+</section>
+
+<!-- ═══════════════ 10. حالات السياسة + الميزانيات ═══════════════ -->
+<section class="card alt" id="s10">
+  <h2 class="sec">١٠ · حالات السياسة والميزانيات <small>لا شيء منها يعني أن إصلاحاً نُفِّذ — Policy Statuses &amp; Budgets</small></h2>
+  <table>
+    <tr><th>الحالة</th><th>المعنى</th><th>ما تعنيه عن التنفيذ</th></tr>
+    <tr><td><span class="lbl">TOOL_REQUEST_ALLOWED</span></td><td>طلب أداة قراءة فقط (tool_request) اجتاز القيود</td><td><span class="pill neutral">قراءة فقط ضمن الكوتات</span></td></tr>
+    <tr><td><span class="lbl">GUIDANCE_VALIDATED</span></td><td>إصلاح مقترح (Proposed Remediation) اجتاز ربط الهدف والرمز والأدلة</td><td><span class="pill allowed">نص القالب يُعرض؛ لا تنفيذ</span></td></tr>
+    <tr><td><span class="lbl">POLICY_REJECTED</span></td><td>رُفض مع أسباب جاهزة للعرض</td><td><span class="pill rejected">عرض معلوماتي؛ بلا زر نسخ</span></td></tr>
+    <tr><td><span class="lbl">ANALYSIS_UNVERIFIED</span></td><td>تحليل نموذجي بلا اقتراح مُتحقَّق</td><td><span class="pill unverified">موسوم تحليل غير موثوق</span></td></tr>
+    <tr><td><span class="lbl">QUARANTINED_LEGACY</span></td><td>أمر وراثي غير مُتحقَّق (Quarantined Legacy)</td><td><span class="pill quarantine">نص معزول؛ النسخ والتنفيذ معطَّلان</span></td></tr>
+  </table>
+  <h3>الميزانيات المقترحة للمرحلة 1 — Proposed Budgets (تُعاير في 3–6)</h3>
+  <table>
+    <tr><th>العنصر</th><th>الحد</th></tr>
+    <tr><td>سجلات مضمّنة</td><td>≤200 — بحد تقديري ≤2000 رمز — حجم الحزمة ≤512 كيلوبايت</td></tr>
+    <tr><td>طلبات أدوات</td><td>≤2 لكل حادثة، ≤1 لكل دور أدلة، ≤2 أداة مختلفة</td></tr>
+    <tr><td>نداءات نموذج</td><td>≤4: A وB أدلة + C التشخيص + D إصلاح ≤1</td></tr>
+    <tr><td>عمليات أدوات</td><td>موعد 5 ثوانٍ + قتل صريح + سقف 1 ميجابايت للنتيجة</td></tr>
+    <tr><td>مهلات شبكة</td><td>اتصال 5 ثوانٍ / قراءة 60 ثانية لكل محاولة + 120 ثانية إشراف رقيب لكل نداء</td></tr>
+    <tr><td>صمّام الحادثة</td><td>300 ثانية حدّ صلب / 90 ثانية هدف — وقتل العملية الفرعية عند 310 ثوانٍ</td></tr>
+    <tr><td>مُخرَج النموذج</td><td>≤64 كيلوبايت؛ نتيجة أداة مرسَلة للنموذج ≤4 كيلوبايت</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════════ 11. العقود ═══════════════ -->
+<section class="card" id="s11">
+  <h2 class="sec">١١ · العقود الثلاثة <small>مقاطع مقتطعة من §9 و §10.4 — Core Contracts</small></h2>
+  <h3>نموذج الحادثة <span class="lbl">nibras.incident/v1</span> — الحقول الجوهرية</h3>
+  <pre>{ "correlation_id": "...",
+  "source": { "kind": "journal", "boot_id": "...", "cursor": "سلسلة شفافة تُنسخ حرفياً",
+              "monotonic_us": 123456789000, "event_transport": "STDOUT_STDERR", "priority": 4 },
+  "record_sender": { "pid": 1821, "role": "STREAM_OWNER", "role_candidate": "CONMON",
+                     "runtime_domain": "HOST_SESSION", "identity_status": "EVENT_TIME_ATTESTED" },
+  "event_sender_cgroup":    { "path": "...libpod-conmon-&lt;64hex&gt;.scope", "provenance": "journal _SYSTEMD_CGROUP", "captured": "event_time" },
+  "event_subject_cgroup":   null,
+  "current_proc_cgroup":    { "path": "0::...libpod-conmon-&lt;64hex&gt;.scope", "captured_at": ..., "provenance": "proc_snapshot" },
+  "container_association":  { "ref": "cont_ref_1", "runtime": "podman", "full_id": "&lt;64hex&gt;",
+                              "status": "VERIFIED", "time_scope": "event_time_association", "evidence_refs": ["e1","e2"] },
+  "workload_identity":      { "state": "UNKNOWN", "reason_codes": ["HISTORICAL_IDENTITY_UNAVAILABLE"] },
+  "evidence_refs": [ { "id": "e1", "origin": "journal_trusted", "strength": "strong", "captured_at": "event_time" } ] }</pre>
+  <h3>طلب أداة <span class="lbl">nibras.tool_request/v1</span></h3>
+  <pre>{ "schema_version": "nibras.tool_request/v1", "request_id": "tr-1", "tool": "journal_query",
+  "arguments": { "unit_ref": null, "pattern": "deprecation", "since_cursor": null, "limit": 50 },
+  "stated_purpose": "رصد مزيد من سجلات التحذير للربط" }</pre>
+  <h3>التشخيص النهائي <span class="lbl">nibras.diagnosis/v1</span> — الإصلاح المقترح (Proposed Remediation)</h3>
+  <pre>{ "schema_version": "nibras.diagnosis/v1",
+  "response": { "incident_summary": "...", "findings": [...], "missing_evidence": [...],
+    "proposed_remediation": { "action_kind": "manual_guidance",
+                              "guidance_code": "G_REVIEW_CONTAINER_SOT",
+                              "target_ref": "cont_ref_1",
+                              "rationale": "نثرٌ تفسيري نموذجي — يُعرض كشرح لا كتعليمات",
+                              "risk_level": "low", "requires_user_confirmation": true },
+    "uncertainties": [...] } }</pre>
+</section>
+
+<!-- ═══════════════ 12. بروتوكول التسليم ═══════════════ -->
+<section class="card alt" id="s12">
+  <h2 class="sec">١٢ · بروتوكول التسليم الإلزامي <small>§18 في الخطة — Mandatory Handoff Protocol</small></h2>
+  <div class="callout danger">
+    <ol>
+      <li><b>مرحلة واحدة لكل إذن:</b> لا البدء بمهام المرحلة التالية مهما بدت سهلة؛ ولا الدمج في تغيير واحد كبير.</li>
+      <li><b>مساحة العمل محدودة:</b> العمل في مساحة Quickshell المقدَّمة فقط؛ خزن Quickshell + Hyprland المجمَّع خارجها وملكُه للمستخدم.</li>
+      <li><b>صفر عمليات git:</b> لا أوامر مقروءة ولا مكتوبة، ولا وصول إلى <span class="lbl">.git</span> ولا إصلاحه ولا إنشائه.</li>
+      <li><b>فهرس مسارات محلي للمرحلة:</b> المسارات المنشأة والمعدَّلة والممسوحة تُتبَّع يدوياً؛ ولا علامات زمن ولا ملفات احتياط ولا تقارير مرافقة.</li>
+      <li><b>تشغيل اختبارات وتقرير حقيقي:</b> تُبلَّغ الأوامر والنتائج الفعلية؛ ولا يُعلَن نجاح كاذب لتخطٍّ لاختبار أو لتعذُّر بيئة تشغيله.</li>
+      <li><b>التوقف بعد البيان:</b> التقرير يحمل رقم المرحلة وملخصها والمسارات الدقيقة والاختبارات ونتائجها وحالة البوابة (PASS/FAIL/BLOCKED) والمخاطر المتبقية.</li>
+      <li><b>انتظار الإذن:</b> لا يستأنف الوكيل إلا بعد تأكيد المستخدم الانتقال وتنفيذ ردّه حينها.</li>
+    </ol>
+  </div>
+  <div class="callout ok">
+    اسم الفرع وكل تفاصيل الرفع بيد المستخدم وحدها؛ والانتقال بين المراحل لا يحدث إلا بتوقف الوكيل بعد تقريره ثم إذن صريح جديد.
+  </div>
+</section>
+
+<!-- ═══════════════ 13. خريطة الملفات ═══════════════ -->
+<section class="card" id="s13">
+  <h2 class="sec">١٣ · خريطة الملفات <small>الموجود اليوم ← المُقترح — File Map</small></h2>
+  <table>
+    <tr><th>موجود (تم التحقق منه في مساحة العمل)</th><th>مقترح في الخطة</th></tr>
+    <tr>
+      <td>
+        <span class="lbl">scripts/python/ai/main.py</span> — المظروف (Envelope) المحفوظ كما هو<br>
+        <span class="lbl">scripts/python/ai/config.py</span> — يُستبدل كشطه بالنافذة المهيكلة لاحقاً<br>
+        <span class="lbl">windows/.../SolutionCard.qml</span> · <span class="lbl">BootDetails.qml</span> — يبقيان يعملان
+      </td>
+      <td>
+        <span class="lbl">evidence/journal_collector.py</span> · <span class="lbl">evidence/discovery.py</span><br>
+        <span class="lbl">evidence/redact.py</span> · <span class="lbl">evidence/survey.py</span><br>
+        <span class="lbl">incident/normalizer.py</span> — النماذج المعيارية
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span class="lbl">services/AiService.qml · AiTask.qml</span> — بلا مهلات أو قتل اليوم
+      </td>
+      <td>
+        <span class="lbl">agent/orchestrator.py · tools.py · contract.py</span><br>
+        <span class="lbl">policy/engine.py · guidance_templates.py</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span class="lbl">scripts/python/tests/fixtures/…</span> — منشأة في المرحلة 0 (اصطناعية فقط)
+      </td>
+      <td>
+        <span class="lbl">docs/supported-runtime-matrix.md</span> — في المرحلة 6
+      </td>
+    </tr>
+  </table>
+</section>
+
+<!-- ═══════════════ 14. ما ثبت اليوم ═══════════════ -->
+<section class="card alt" id="s14">
+  <h2 class="sec">١٤ · ما ثبت اليوم على المضيف <small>فحص قراءة فقط — 2026-11-02 — Read-Only Host Probes</small></h2>
+  <table>
+    <tr><th>فحص (قراءة فقط)</th><th>النتيجة</th></tr>
+    <tr><td>الكشط الحالي (Current Scrape) <span class="lbl">-p 3 -n 30 short-iso</span></td><td>30 سجلاً — نص فقط بلا حقول موثوقة</td></tr>
+    <tr><td>النافذة المقترحة (Proposed Window) <span class="lbl">-p warning -n 200 json</span></td><td>200 سجل · أولويات {2:2 — 3:30 — 4:168} · نقل kernel 14 / journal 183 / syslog 3 — يثبت أن <span class="lbl">-p warning</span> تضم الأخطر أيضاً</td></tr>
+    <tr><td>غلة الحقول (Field Yields)</td><td><span class="lbl">_PID/_COMM/_UID/_GID/_SYSTEMD_UNIT/_SYSTEMD_CGROUP</span> في 186/200 · <span class="lbl">_AUDIT_LOGINUID/_AUDIT_SESSION</span> في 147/200 · <span class="lbl">__CURSOR/__MONOTONIC_TIMESTAMP/_BOOT_ID</span> في 200/200</td></tr>
+    <tr><td>سجلات open-webui</td><td>المُرسِل الحقيقي <span class="lbl">_COMM = conmon</span> و<span class="lbl">_EXE = /usr/bin/conmon</span> بينما المعرِّف <span class="lbl">SYSLOG_IDENTIFIER = open-webui</span> — إثبات حي للفاصل «المُرسِل ≠ صاحب الاسم»، والنطاق <span class="lbl">user@1000.service / libpod-conmon-…scope</span> هو الوحيد الملحوظ</td></tr>
+    <tr><td>ملاحظة توصيف</td><td>سطر مستوى INFO ظهر ضمن نافذة <span class="lbl">-p 3</span> — احتمال تمرير مسارات الحاويات بدرجات أعلى يحتاج توصيفاً في المرحلتين 1–2، ولا يُعزى إليه سبب</td></tr>
+  </table>
+  <div class="callout ok"><b>أثر مباشر على المرحلة 0:</b> هذه القياسات شكّلت المُثبّتات الاصطناعية القياسية للمرحلتين 0–1 — دون حفظ أي رسائل سجل حقيقية.</div>
+</section>
+
+<!-- ═══════════════ 15. مسرد المصطلحات ═══════════════ -->
+<section class="card" id="s15">
+  <h2 class="sec">١٥ · مسرد المصطلحات <small>كل مصطلح مع مرجعه الإنجليزي كما ورد في الخطة — Glossary</small></h2>
+  <p>إجابة سريعة عن «ما معنى هذا المصطلح؟» بدون البحث في المتن. المصطلحات التي حُسّنت صياغتها في هذا الدليل مقارنة بمسودات سابقة مُشار إليها بعبارة «كانت:».</p>
+  <table>
+    <tr><th>في هذا الدليل</th><th>المصطلح في الخطة</th><th>المعنى عملياً</th></tr>
+    <tr><td>الكشط</td><td><span class="lbl">Log Scrape</span></td><td>جلب السجلات الحديثة من المضيف لتغذية التحليل — نصّيّ اليوم بصيغة <span class="lbl">short-iso</span>، وبنيوي في المستهدف بصيغة <span class="lbl">json</span>.</td></tr>
+    <tr><td>التنقية (كانت: «التبييض»)</td><td><span class="lbl">Redaction</span></td><td>إزالة أو إخفاء الأسرار من الدليل قبل وصوله إلى النموذج — أبرزها سطر أمر التشغيل <span class="lbl">cmdline</span>؛ أما بيئة العملية <span class="lbl">env</span> فمرفوضة افتراضياً بتاتاً.</td></tr>
+    <tr><td>المؤشر الشفاف</td><td><span class="lbl">Cursor</span></td><td>نقطة تسلسل يصدرها <span class="lbl">journald</span> لكل سجل؛ تُنسخ حرفياً وتُستعمل لتحديد حدود نافذة القراءة بدقة.</td></tr>
+    <tr><td>الحقول الموثوقة</td><td><span class="lbl">Trusted Fields</span></td><td>حقول أنتجها <span class="lbl">journald</span> نفسه (مثل <span class="lbl">_COMM</span> و<span class="lbl">_PID</span> و<span class="lbl">_SYSTEMD_CGROUP</span>) فتُقبَل كدليل — خلافاً للنص القابل للتلاعب داخل الرسالة.</td></tr>
+    <tr><td>المُرسِل</td><td><span class="lbl">Record Sender</span></td><td>صاحب الحقول الموثوقة للسجل — وقد يكون <span class="lbl">conmon</span> مالك مجرى الإخراج لا التطبيق الموصوف نفسه.</td></tr>
+    <tr><td>الموضوع الموصوف</td><td><span class="lbl">Referenced Subject</span></td><td>الكيان الذي يتحدث عنه السجل فعلياً؛ لا يُفترض أبداً أنه مطابق للمُرسِل.</td></tr>
+    <tr><td>ثلاثية cgroup</td><td><span class="lbl">Cgroup Trio</span></td><td>ثلاث ملاحظات منفصلة المصدر: cgroup المُرسِل زمن-الحدث، وcgroup الموضوع زمن-الحدث، وcgroup العملية الحية الآن — وكل واحدة قد تختلف عن الأخرى.</td></tr>
+    <tr><td>إشهاد هوية زمن-الحدث</td><td><span class="lbl">Event-Time Attestation</span></td><td>التقييم وفق زمن مطلع السجل لا وفق اللحظة الحالية؛ فلا يُفسَّر الماضي من الحاضر.</td></tr>
+    <tr><td>الحالة المحورية الحية</td><td><span class="lbl">Motivating Case</span></td><td>سجل يشير إلى <span class="lbl">open-webui</span> بينما مُرسِله <span class="lbl">conmon</span> — القصة الحقيقية التي دفعت إلى إعادة تصميم طبقة الأدلة.</td></tr>
+    <tr><td>المظروف</td><td><span class="lbl">Envelope</span></td><td>غلاف JSON الموحَّد بين الخلفية وQML بأربع حالات: <span class="lbl">success / response / updated_history / error</span> — مجمد الشكل، والانتقال بمُهايئتين.</td></tr>
+    <tr><td>المرجع الشفاف</td><td><span class="lbl">Opaque Ref</span></td><td>معرّف محايد يصدره الكود بدلاً من مسار أو نص قابل للتنفيذ؛ يُفهرس في السجل ولا يُفسَّر كأمر.</td></tr>
+    <tr><td>الرفض الافتراضي</td><td><span class="lbl">Default-Deny</span></td><td>في محرك السياسة: كل إجراء مرفوض إلا المصرَّح به صراحة في مصفوفة نطاق × إجراء، مع أسباب جاهزة للعرض.</td></tr>
+    <tr><td>الإصلاح المقترح</td><td><span class="lbl">Proposed Remediation</span></td><td>اقتراح من النموذج لا ينفَّذ إطلاقاً؛ الخلفية تعرض نص القالب (<span class="lbl">guidance_code</span>) قادماً من قوالبها، وينفّذه السائل بيده.</td></tr>
+    <tr><td>الحجز</td><td><span class="lbl">Quarantine</span> · <span class="lbl">QUARANTINED_LEGACY</span></td><td>لأوامر البيئة القديمة غير المُتحقَّق منها: نص معزول في البطاقة بلا زر نسخ ولا تنفيذ، مع شارة توضيح ظاهرة.</td></tr>
+    <tr><td>المُثبَّتة</td><td><span class="lbl">Fixture</span></td><td>ملف اصطناعي ثابت الصورة يجمِّد حالة مرجعية للفحوص الرجعية؛ بدون أي بيانات مضيف حقيقية.</td></tr>
+    <tr><td>بوابة القبول والتسليم</td><td><span class="lbl">Acceptance Gate</span> · <span class="lbl">Handoff §18</span></td><td>شروط إقفال كل مرحلة؛ ثم تقرير في المحادثة يضم المسارات المتغيرة والفحوص ونتائجها، ويقف الوكيل بصرامة حتى إذن صريح جديد.</td></tr>
+  </table>
+</section>
+
+<footer>
+  هذا ملف مرجعي بصري مشتق من <b>docs/NibrasShell_AI_Diagnostics_Plan_vFinal.md</b> — وعند التعارض يسود ملف الخطة.<br>
+  الخطة جاهزة لتصبح عقد تنفيذ — وهو يبدأ من المرحلة 0 فقط بتكليف صريح من المالك. © 2026 · مرجع عربي RTL · NibrasShell Repo
+</footer>
+
+</main>
+</body>
+</html>
