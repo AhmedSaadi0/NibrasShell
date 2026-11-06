@@ -17,7 +17,7 @@
 |---|---|---|---|
 | Operating system | Linux (Fedora 43 host in the validation environment) | Supported | Non-Linux platforms are out of scope for R1. |
 | Init / log source | systemd + journald | Supported | Structured evidence requires `journalctl --output=json`; a missing journald is a typed failure, never a silent fallback. |
-| Python | System `python3` (3.14.7 in this environment) with the existing `requirements-3.13.txt` pins | Supported for validation | No new dependency was added; tests use stdlib `unittest`. |
+| Python | System `python3` (3.15.0 in this validation environment) with the existing `requirements-3.13.txt` pins | Supported for validation | No new dependency was added; tests use stdlib `unittest`. |
 | Quickshell | Quickshell 0.3.1 / Qt 6 | Supported with the documented Process limitation | `Process.signal(int)` is used for SIGTERM/SIGKILL escalation; it is best-effort because the exact in-process termination semantics are not documented in-repo. The task fails closed regardless. |
 | Container runtime | Podman, rootless or rootful, read-only inspection | Supported when the user's runtime context is reachable | `podman inspect`/`info` only; wrong-context, permission, and unavailable states remain typed failures. |
 | Host systemd units | `systemctl show` (system or user scope selected by backend) | Supported when readable | User-scope actions are gated separately; no mutation verbs exist in the tool allowlist. |
@@ -40,9 +40,11 @@
   secret-bearing fields: refused by default (§14).
 - Any automatic remediation execution in R1. The `manual_guidance` /
   `explain_only` action kinds are declarative only.
-- Guaranteed hard cancellation of a third-party SDK request inside the same
-  Python process. The supervisor discards the result and the daemon thread is
-  daemonized; the process must not be treated as a synchronous hard cancel.
+- Guaranteed hard cancellation of a third-party SDK request *inside the same
+  process*. The provider call runs in a dedicated worker child; the 120 s
+  supervisor terminates that child with SIGTERM, then SIGKILL. If the
+  platform cannot create a `fork` worker, the run fails closed with
+  `PROVIDER_ERROR`; it never falls back to an uncancellable in-process call.
 
 ## 2. Permission / context checklist
 
@@ -82,11 +84,24 @@ orchestrator. Each event is sanitized and bounded:
   "reason_codes": ["R_OK"],
   "redaction_counts": {"tool:journal_query": 2},
   "budget_usage": {"model_calls_used": 3, "model_calls_max": 4},
-  "latency_ms": {"total": 812.4, "model_calls": [{"call_index": 1, "role": "A", "elapsed_ms": 240.1}]}
+  "latency_ms": {
+    "total": 812.4,
+    "model_calls": [
+      {
+        "call_index": 1,
+        "role": "A",
+        "elapsed_ms": 240.1,
+        "payload_sha256": "0f1e2d3c4b5a6978877665544332211ffeeddccbbaa99887766554433221100"
+      }
+    ]
+  }
 }
 ```
 
 Stages: `collect`, `discover`, `orchestrate`, `validate`, `render`.
+`payload_sha256` is the SHA-256 of the redacted outbound prompt/history for
+that call (§16.3 "provider payload hash audited"). Only the hash is recorded;
+the payload, prompt text, and model output never enter the audit line.
 Disable writes with `NIBRAS_SHELL_AI_AUDIT_DISABLED=1`; override the path with
 `NIBRAS_SHELL_AI_AUDIT_LOG` for tests or an explicit deployment policy.
 Audit setup/write errors never change the safe diagnostic result.
@@ -111,20 +126,38 @@ Calibration procedure for the release operator:
 4. Do not lower a limit based on synthetic timing. The constants remain
    **PROPOSED** until real local-model measurements are obtained.
 
-This Phase 6 environment has no runnable local model/provider endpoint, so no
-empirical provider calibration value is claimed. The Phase 6 tests measure the
-instrumentation path with an injected model; they do not claim provider
-latency.
+**Calibration status (checked 2026-11-06): BLOCKED.** This validation
+environment still has no runnable local model/provider endpoint: TCP checks to
+`127.0.0.1:8080`, `:11434`, `:8000`, and `:1234` were closed. No empirical
+provider calibration value is claimed, and the constants remain **PROPOSED**.
+The Phase 6 tests measure the instrumentation path with an injected model;
+they do not claim provider latency.
 
 ## 5. Provider-cancellation review
 
-| Provider | Native client limit | Hard cancellation | Supervisor / result |
+| Provider | Native client limit | In-process SDK cancellation | Isolated worker / result |
 |---|---|---|---|
-| Local (`requests`) | `(connect 5 s, read 60 s)` passed as a tuple | No in-process hard cancel; read timeout is inter-byte inactivity, not total wall clock | 120 s orchestrator supervisor discards the result; worker is daemonized; no retry after deadline. |
-| OpenAI | `timeout=120 s` passed where the installed SDK exposes it | Not claimed; SDK behavior is version-dependent | Same supervisor; safe timeout failure. |
-| OpenRouter | `timeout=120 s` passed where the installed SDK exposes it | Not claimed | Same supervisor; safe timeout failure. |
-| Gemini | No verified native timeout wiring in this phase | Not claimed | Same supervisor; safe timeout failure. |
-| Ollama | No verified native timeout wiring in this phase | Not claimed | Same supervisor; safe timeout failure. |
+| Local (`requests`) | `(connect 5 s, read 60 s)` passed as a tuple | No in-process hard cancel; read timeout is inter-byte inactivity, not total wall clock | 120 s supervisor terminates the worker child with SIGTERM→SIGKILL; a local timeout meta is mapped to `MODEL_TIMEOUT`; no retry after deadline. |
+| OpenAI | `timeout=120 s` passed where the installed SDK exposes it | Not claimed; SDK behavior is version-dependent | Worker child is terminated at 120 s; timeout-shaped provider exceptions map to `MODEL_TIMEOUT`, other failures to `PROVIDER_ERROR`. |
+| OpenRouter | `timeout=120 s` passed where the installed SDK exposes it | Not claimed | Same worker-child path and safe timeout failure. |
+| Gemini | No verified native timeout wiring in this phase | Not claimed | Same worker-child path and safe timeout failure. |
+| Ollama | No verified native timeout wiring in this phase | Not claimed | Same worker-child path and safe timeout failure. |
+
+### Worker-child mechanism
+
+`scripts/python/ai/agent/model_worker.py` runs the injected
+`model_call(message, history)` in a dedicated `fork` child per orchestrator
+run. The parent communicates over a pipe and waits for at most the per-request
+deadline. On expiry it closes the pipe, sends `SIGTERM`, waits a short grace
+period, then sends `SIGKILL` and reaps the child. On Linux the child sets
+`PR_SET_PDEATHSIG` as a best-effort guard against an orphaned provider call if
+the parent itself is killed.
+
+The worker is started lazily, reused for calls A/B/C/D within the same run,
+and closed in `OrchestratorRun.run()`'s `finally` block. The orchestrator no
+longer uses a daemon thread for provider transport. If `fork`/process creation
+is unavailable, the supervisor records the reason and fails closed with
+`PROVIDER_ERROR`; it does not silently fall back to an uncancellable call.
 
 The orchestrator never treats a late/partial response as success. Tool
 subprocesses have their own 5 s deadline, SIGTERM→SIGKILL, and output caps.
@@ -175,7 +208,7 @@ rule: timeout/failure returns `no_action_taken: true`.
 | AC #4 | `test_phase2_incident.py` missing-cgroup and missing-sender rows; `test_phase1_discovery.py` unknown-sender rows. |
 | AC #5 | `test_phase2_incident.py` typed failure rows; `test_phase3_orchestrator.py` timeout/failure rows. |
 | AC #6 | `test_phase3_orchestrator.py` injection/opaque-ref/prohibited-key rows; `test_phase4_policy.py`. |
-| AC #7 | `test_phase6_release_hardening.py::TestNoAutomaticStateChange.test_tool_requests_only_invoke_read_only_argv` + `test_null_tool_model_executes_no_command`; full suite has no write-capable tool. |
+| AC #7 | `test_phase6_release_hardening.py::TestNoAutomaticStateChange.test_tool_requests_only_invoke_read_only_argv` + `test_null_tool_model_executes_no_command`; `RESERVED_WRITE_ACTIONS` exists but is disjoint from the validator's `ACTION_KINDS` and has no executor; full suite has no write-capable tool. |
 | AC #8 | `test_phase3_orchestrator.py` evidence-ref validation rows; `test_phase4_policy.py` evidence-linkage rows. |
 | AC #9 | `test_phase5_qml_adapters.py::test_boot_details_has_no_fail_open_enum_defaults` and status-render rows. |
 | AC #10 | `test_phase5_qml_adapters.py` golden legacy/diagnosis fixtures; `test_phase6_release_hardening.py::TestSupportedRuntimeMatrix` runtime/checklist contract. |
@@ -185,7 +218,7 @@ rule: timeout/failure returns `no_action_taken: true`.
 | AC #14 | `test_phase1_discovery.py` cgroup trio; `test_phase2_incident.py::test_row4_cgroup_trio_three_fields_and_no_upgrade`. |
 | AC #15 | `test_phase5_qml_adapters.py` legacy quarantine and diagnosis adapter rows. |
 | AC #16 | `test_phase4_policy.py` closed-status vocabulary and template rendering; `test_phase5_qml_adapters.py` status labels. |
-| AC #17 | `test_phase3_orchestrator.py` call/tool budget rows; `test_phase6_release_hardening.py::TestMeasuredLatencyAndAudit` budget ledger. |
+| AC #17 | `test_phase3_orchestrator.py` call/tool budget rows + `TestOrchestratorSupervision.test_worker_child_is_hard_cancelled`; `test_phase6_release_hardening.py::TestMeasuredLatencyAndAudit` budget ledger + `TestProviderLimits.test_provider_worker_child_source_contract`. |
 
 Manual checks that cannot be fully automated are in
 `docs/diag-contract-notes.md` §11 and are limited to real QML/Quickshell and

@@ -159,13 +159,13 @@
 
 ## 11. المرحلة 6 — Regression hardening & release gate
 
-**النطاق:** تحصين وإثبات بوابة الإصدار فقط. لم يُفعَّل مسار v2 افتراضياً، ولم تُضَف أي عملية كتابة/إصلاح تلقائي، وبقي مسار v1 كما هو خلف علمه. الملفات الجديدة: `scripts/python/ai/audit.py`، `scripts/python/ai/provider_limits.py`، `docs/supported-runtime-matrix.md`، و`scripts/python/tests/test_phase6_release_hardening.py`.
+**النطاق:** تحصين وإثبات بوابة الإصدار فقط. لم يُفعَّل مسار v2 افتراضياً، ولم تُضَف أي عملية كتابة/إصلاح تلقائي، وبقي مسار v1 كما هو خلف علمه. الملفات الجديدة: `scripts/python/ai/audit.py`، `scripts/python/ai/provider_limits.py`، `scripts/python/ai/agent/model_worker.py`، `docs/supported-runtime-matrix.md`، و`scripts/python/tests/test_phase6_release_hardening.py`.
 
 ### 11.1 ما أُضيف
 
-- **Audit logging:** `AuditLogger` يكتب JSONL إلى `$XDG_STATE_HOME/nibrasshell/ai-diagnostics/audit.jsonl` (أو `NIBRAS_SHELL_AI_AUDIT_LOG`)، بحقول `ts/correlation_id/stage/outcome/reason_codes/redaction_counts/budget_usage/latency_ms` فقط. لا نصوص حوادث أو أوامر أو أسرار؛ فشل الكتابة لا يفشل التشخيص. مراحل التسجيل: `collect`، `discover`، `orchestrate`، `validate`، `render`.
+- **Audit logging:** `AuditLogger` يكتب JSONL إلى `$XDG_STATE_HOME/nibrasshell/ai-diagnostics/audit.jsonl` (أو `NIBRAS_SHELL_AI_AUDIT_LOG`)، بحقول `ts/correlation_id/stage/outcome/reason_codes/redaction_counts/budget_usage/latency_ms` فقط. داخل `latency_ms.model_calls[]` يُسجَّل `payload_sha256` (بصمة SHA-256 للـ prompt/history المُنقّى) لإثبات تدقيق حِزمة المزوّد دون تخزين النص. لا نصوص حوادث أو أوامر أو أسرار؛ فشل الكتابة لا يفشل التشخيص. مراحل التسجيل: `collect`، `discover`، `orchestrate`، `validate`، `render`.
 - **Measured latency:** كل نداء نموذج يُقاس حول supervisor 120s، وكل أداة تُقاس حول غلاف 5s. القيم تُضاف كحقول إضافية في `orchestrator.latency_ms` وفي سجل audit. لم تُخفَّض أي حدود بلا قياس حقيقي؛ تبقى PROPOSED حتى قياس مزوّد محلي فعلي.
-- **Provider cancellation:** `LocalProvider` يستخدم الآن `(connect 5s, read 60s)` بدلاً من `1200s` المفردة؛ OpenAI/OpenRouter يمرران `timeout=120s` حيث تسمح حزمة SDK المثبتة. Gemini/Ollama بلا ربط timeout أصلي مُتحقَّق في هذه المرحلة؛ supervisor 120s هو حد الجدار النهائي، والنتيجة المتأخرة تُهمَل ولا تُعامل كنجاح.
+- **Provider cancellation:** `LocalProvider` يستخدم الآن `(connect 5s, read 60s)` بدلاً من `1200s` المفردة، ويعيد `provider_error: TIMEOUT` في meta عند انتهاء المهلة (المسار v1 يتجاهل meta ويحتفظ بشكل النص القديم). OpenAI/OpenRouter يمرران `timeout=120s` حيث تسمح حزمة SDK المثبتة؛ Gemini/Ollama بلا ربط timeout أصلي مُتحقَّق. نداء المزوّد نفسه يُنفَّذ في **worker child** قابل للإلغاء (`agent/model_worker.py`)؛ عند 120s يرسل الـ supervisor SIGTERM ثم SIGKILL ويستعيد العملية، ولا يُترك thread daemonized. إذا تعذّر إنشاء `fork` يفشل التشخيص مغلقاً بـ `PROVIDER_ERROR` بدلاً من الرجوع إلى نداء غير قابل للإلغاء.
 - **QML lifecycle:** `AiTask.qml` و`ResourceDiagnostics.qml` يملكان watchdog 310s، SIGTERM ثم SIGKILL بعد ثانية، وتسوية فشل مرة واحدة لتحرير الطابور/التبريد. دلالات Quickshell 0.3.1 الدقيقة غير موثقة داخلياً؛ لذلك التنفيذ best-effort مع فشل مغلق، والتحقق اليدوي أدناه.
 - **Privacy:** `redact_environment()` يرفض أي allowlist غير فارغ في R1 ويعيد `{}` لأي env؛ لا يوجد قراءة `/proc/<pid>/environ` في كود الإنتاج؛ سجل audit لا يقبل نصوصاً حرة. سجل AiTask لم يعد يطبع الظرف الخام، بل عدد البايتات فقط.
 - **Supported runtime:** المصفوفة الكاملة في `docs/supported-runtime-matrix.md`، وتشمل checklist الصلاحيات/السياق، مراجعة إلغاء المزوّد، ومراجعة دورة حياة QML.
@@ -174,17 +174,20 @@
 
 1. **Audit path:** شغّل مسار v2 مع `NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1` ومزوّد محلي. تحقق من إنشاء `~/.local/state/nibrasshell/ai-diagnostics/audit.jsonl` (أو مسار XDG)، ومن أن كل سطر JSON صالح، وأنه لا يحتوي نص حادثة أو أمراً أو مفتاح API. جرّب `NIBRAS_SHELL_AI_AUDIT_DISABLED=1` للتأكد من تعطيل الكتابة.
 2. **No state changes:** راقب العملية أثناء حادثة container/unit. يجب ألا يظهر أي `sudo`، `dnf/apt/pacman`، `systemctl start/stop/restart/enable`، `podman create/run/rm/update`، أو shell تنفيذي. الأدوات المسموحة قراءة فقط: `journalctl`، `systemctl show`، `podman inspect/info`.
-3. **Provider timeout:** وجّه المزوّد إلى endpoint بطيء/متوقف. يجب أن ينتهي الطلب بحالة فشل آمنة (`MODEL_TIMEOUT`/`PROVIDER_ERROR`) بعد حد 120s، مع `no_action_taken: true`، ودون retry إضافي.
+3. **Provider timeout:** وجّه المزوّد إلى endpoint بطيء/متوقف. يجب أن ينتهي الطلب بحالة فشل آمنة (`MODEL_TIMEOUT`/`PROVIDER_ERROR`) عند حد 120s، مع `no_action_taken: true`، ودون retry إضافي. تحقق من ملاحظة `worker child terminated` ومن عدم بقاء عملية الـ provider؛ اختبار `test_worker_child_is_hard_cancelled` يغطي ذلك آلياً.
 4. **QML child watchdog:** باستخدام harness محلي أو أمر يحاكي طفلاً لا ينتهي، تحقق من أن `AiTask` يطلق `failed` بعد 310s، وأن العملية تُستهدف بـ SIGTERM ثم SIGKILL، وأن طلب AI التالي يعمل بعد انتهاء `requestCooldownMs`. لا تشغّل هذا الاختبار ضد مزوّد حقيقي أو حادثة إنتاج.
 5. **ResourceDiagnostics watchdog:** كرر الفحص على `ResourceDiagnostics`؛ يجب أن يعود الطلب الافتراضي المحدود وتُستأنف قائمة الانتظار بدل التعليق.
 6. **Privacy spot-check:** افحص `journalctl --output=json` وحادثة تحتوي `password=...`/token. تحقق من غياب القيمة الأصلية من prompt/model/tool result/audit/QML copy، ومن ظهور عدّاد redaction فقط.
 7. **Latency calibration:** نفّذ خمس حوادث تمثيلية على المزوّد المحلي، ثم اقرأ `latency_ms` و`budget_usage` من audit. لا تغيّر 120/300/310s اعتماداً على قياس اصطناعي؛ وثّق p50/p95 قبل أي معايرة.
+   - **Status (2026-11-06): BLOCKED.** لا يوجد endpoint محلي قابل للوصول في بيئة التحقق (`127.0.0.1:8080` و`:11434` و`:8000` و`:1234` مغلقة)، لذا تبقى الثوابت **PROPOSED** ولا تُدَّعى معايرة تجريبية.
 
 ### 11.3 بوابة القبول
 
 - `python3 -m unittest discover -s scripts/python/tests -p 'test_phase*.py' -v` — يجب أن تنجح كل اختبارات المراحل 0–6.
-- `scripts/python/tests/test_phase6_release_hardening.py` يثبت: audit metadata/path/fail-open، latency/budget instrumentation، privacy source contracts، `docs/supported-runtime-matrix.md`، QML watchdog source contracts، وعدم وجود tool/action يغيّر الحالة.
+- `scripts/python/tests/test_phase6_release_hardening.py` يثبت: audit metadata/path/fail-open، latency/budget instrumentation، privacy source contracts، `docs/supported-runtime-matrix.md`، QML watchdog source contracts، provider worker source contract، typed local timeout meta، وعدم وجود tool/action يغيّر الحالة.
+- `scripts/python/tests/test_phase3_orchestrator.py::TestOrchestratorSupervision` يثبت: hard cancel للـ worker child عند المهلة (`test_worker_child_is_hard_cancelled`)، وإعادة استرجاعه بعد النجاح (`test_worker_child_reaped_after_success`)، وتحويل meta/exception إلى `MODEL_TIMEOUT`/`PROVIDER_ERROR`، وفشل مغلق عند تعذّر `fork`.
 - AC #1–#17 mapped to tests/manual checks in `docs/supported-runtime-matrix.md` §8.
+- **Calibration gate:** يبقى `BLOCKED` حتى يتوفر local provider endpoint حقيقي؛ لا تُغيَّر الثوابت PROPOSED بناءً على الاختبارات الاصطناعية.
 - **صفر سلوك تلقائي يغيّر الحالة في R1:** لا أداة كتابة، ولا action_kind تنفيذي، ولا أمر يُشتق من نص النموذج؛ كل النتائج التشغيلية إما قراءة أو إرشاد خلفي declarative.
 
 

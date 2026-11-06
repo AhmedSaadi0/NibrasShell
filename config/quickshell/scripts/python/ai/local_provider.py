@@ -71,19 +71,25 @@ class LocalProvider(LLMProvider):
 
         except requests.exceptions.Timeout:
             print("[Local LLM Error] Timeout.", file=sys.stderr)
-            return "[Local LLM Error] Timeout", {}
+            # Typed meta is consumed by the v2 orchestrator; the legacy v1
+            # path ignores it and still receives the same text shape.
+            return "[Local LLM Error] Timeout", {"provider_error": "TIMEOUT"}
 
         except requests.exceptions.ConnectionError:
             print(
                 f"[Local LLM Error] Connection failed: {endpoint}",
                 file=sys.stderr,
             )
-            return "[Local LLM Error] Connection failed", {}
+            return "[Local LLM Error] Connection failed", {
+                "provider_error": "CONNECTION"
+            }
 
         except requests.exceptions.HTTPError as e:
             print(f"[Local LLM Error] HTTP Error: {e}", file=sys.stderr)
-            return f"[Local LLM Error] HTTP Error: {e}", {}
+            return f"[Local LLM Error] HTTP Error: {e}", {
+                "provider_error": "HTTP"
+            }
 
         except Exception as e:
             print(f"[Local LLM Error] {e}", file=sys.stderr)
-            return f"[Local LLM Error] {e}", {}
+            return f"[Local LLM Error] {e}", {"provider_error": "PROVIDER_ERROR"}

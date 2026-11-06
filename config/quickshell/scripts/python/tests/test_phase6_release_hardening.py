@@ -8,7 +8,7 @@ This suite covers the additive Phase-6 hardening surface:
 * measured model/tool latency and budget ledger in the envelope + audit;
 * privacy contracts (env default-deny, no ``/proc/<pid>/environ`` read);
 * QML child watchdogs in ``AiTask.qml`` / ``ResourceDiagnostics.qml``;
-* provider deadline/cancellation source contracts;
+* cancellable provider worker child + deadline/cancellation contracts;
 * the supported-runtime matrix and its AC #1–#17 evidence map; and
 * the R1 invariant that the diagnostics path never executes a state-changing
   command and always returns declarative guidance.
@@ -30,6 +30,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import requests
+
 BASE = Path(__file__).resolve().parent
 ROOT = BASE.parent  # scripts/python
 AI_DIR = ROOT / "ai"
@@ -41,6 +43,7 @@ if str(AI_DIR) not in sys.path:
     sys.path.insert(0, str(AI_DIR))
 
 from ai import audit as AUD  # noqa: E402
+from ai import local_provider as LP  # noqa: E402
 from ai import provider_limits as PL  # noqa: E402
 from ai.agent import contract as C  # noqa: E402
 from ai.agent import orchestrator as ORC  # noqa: E402
@@ -385,6 +388,7 @@ class TestMeasuredLatencyAndAudit(unittest.TestCase):
             self.assertEqual([m["call_index"] for m in measurements], [1, 2, 3])
             for measurement in measurements:
                 self.assertGreaterEqual(measurement["elapsed_ms"], 5.0)
+                self.assertRegex(measurement["payload_sha256"], r"^[0-9a-f]{64}$")
             self.assertGreaterEqual(audit["latency_ms"]["total"], 0.0)
 
             events = read_events(path)
@@ -504,12 +508,33 @@ class TestProviderLimits(unittest.TestCase):
         self.assertIn("timeout=PROVIDER_REQUEST_DEADLINE_S", openai_source)
         self.assertIn("timeout=PROVIDER_REQUEST_DEADLINE_S", router_source)
 
-    def test_supported_runtime_matrix_documents_residual_cancellation(self):
+    def test_provider_worker_child_source_contract(self):
+        source = (AI_DIR / "agent" / "model_worker.py").read_text(encoding="utf-8")
+        self.assertIn('get_context("fork")', source)
+        self.assertIn("proc.terminate()", source)
+        self.assertIn("proc.kill()", source)
+        self.assertIn("prctl", source)
+        self.assertIn("SIGTERM", source)
+        self.assertIn("ModelCallTimeout", source)
+
+    def test_local_provider_timeout_returns_typed_meta(self):
+        provider = LP.LocalProvider("test-key", "test-model")
+        with mock.patch.object(
+            LP.requests, "post", side_effect=requests.exceptions.Timeout()
+        ):
+            text, meta = provider.generate("hello")
+        self.assertIn("Timeout", text)
+        self.assertEqual(meta.get("provider_error"), "TIMEOUT")
+
+    def test_supported_runtime_matrix_documents_worker_isolation(self):
         text = (REPO / "docs" / "supported-runtime-matrix.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("Provider-cancellation review", text)
         self.assertIn("No in-process hard cancel", text)
+        self.assertIn("worker child", text)
+        self.assertIn("SIGTERM", text)
+        self.assertIn("SIGKILL", text)
         self.assertIn("Not claimed", text)
         self.assertIn("orchestrator supervisor", text)
 
@@ -573,6 +598,7 @@ class TestSupportedRuntimeMatrix(unittest.TestCase):
         self.assertIn("journald", self.text)
         self.assertIn("NIBRAS_SHELL_AI_AUDIT_LOG", self.text)
         self.assertIn("NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE", self.text)
+        self.assertIn("payload_sha256", self.text)
         self.assertIn("310 s", self.text)
 
     def test_all_acceptance_criteria_are_mapped(self):
@@ -597,6 +623,11 @@ class TestNoAutomaticStateChange(unittest.TestCase):
             {"inspect_process", "inspect_container", "inspect_unit", "journal_query"},
         )
         self.assertEqual(set(C.ACTION_KINDS), {"explain_only", "manual_guidance"})
+        self.assertTrue(set(C.RESERVED_WRITE_ACTIONS))
+        self.assertTrue(
+            set(C.RESERVED_WRITE_ACTIONS).isdisjoint(C.ACTION_KINDS),
+            "AC #7: write actions exist only as reserved, unreachable vocabulary",
+        )
         self.assertEqual(set(T._EXECUTORS), set(C.ALLOWED_TOOLS))
         self.assertNotIn("shell", C.ALLOWED_TOOLS)
         self.assertNotIn("write", C.ALLOWED_TOOLS)

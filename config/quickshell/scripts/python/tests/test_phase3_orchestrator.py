@@ -40,7 +40,9 @@ Row map (tests ↔ plan §16.3):
 """
 
 import json
+import multiprocessing
 import os
+import queue
 import sys
 import time
 import unittest
@@ -200,17 +202,37 @@ def diagnosis(
 
 
 class FakeModel:
-    """Scriptable provider seam: queue of str | (sleep, str) | Exception."""
+    """Scriptable provider seam: queue of str | (sleep, str) | Exception.
+
+    Phase 6 executes the model call in a child process.  The call counter and
+    messages therefore use multiprocessing primitives so tests can still
+    observe the calls from the parent after the child runs.
+    """
 
     def __init__(self, outputs):
         self.outputs = list(outputs)
-        self.messages: list[str] = []
-        self.calls = 0
+        self._messages = multiprocessing.Queue()
+        self._message_cache: list[str] = []
+        self._calls = multiprocessing.Value("i", 0)
         self.marks: list[float] = []
 
+    @property
+    def calls(self) -> int:
+        return int(self._calls.value)
+
+    @property
+    def messages(self) -> list[str]:
+        while True:
+            try:
+                self._message_cache.append(self._messages.get_nowait())
+            except queue.Empty:
+                break
+        return list(self._message_cache)
+
     def __call__(self, message, history):
-        self.messages.append(message)
-        self.calls += 1
+        self._messages.put(message)
+        with self._calls.get_lock():
+            self._calls.value += 1
         self.marks.append(time.monotonic())
         if not self.outputs:
             return json.dumps({"tool": None, "schema_version": C.SCHEMA_TOOL_REQUEST})
@@ -1308,7 +1330,6 @@ class TestOrchestratorEndToEnd(unittest.TestCase):
             validation["guidance_decision"]["status"], C.STATUS_GUIDANCE_VALIDATED
         )
         self.assertEqual(model.calls, 3)
-        self.assertEqual(model.outputs, [])
         aud = env["orchestrator"]
         self.assertEqual(aud["model_calls_used"], 3)
         self.assertEqual(aud["tool_requests_executed"], 2)
@@ -1671,7 +1692,82 @@ class TestOrchestratorSupervision(unittest.TestCase):
         self.assertEqual(resp["analysis_failure"], "MODEL_TIMEOUT")
         self.assertLess(elapsed, 2.0)
         self.assertEqual(model.calls, 1)
-        self.assertIn("DISCARDED", " ".join(env["orchestrator"]["notes"]))
+        notes = " ".join(env["orchestrator"]["notes"])
+        self.assertIn("DISCARDED", notes)
+        self.assertIn("worker child terminated", notes)
+
+    def test_worker_child_is_hard_cancelled(self):  # row 18 (process isolation)
+        runner = FakeToolRunner()
+        pid_box = multiprocessing.Value("i", 0)
+
+        def slow_model(message, history):
+            pid_box.value = os.getpid()
+            time.sleep(5.0)
+            return NULL_TOOL, {}
+
+        env = run(
+            model=slow_model,
+            runner=runner,
+            model_call_deadline_s=0.3,
+        )
+        self.assertEqual(env["response"]["analysis_failure"], "MODEL_TIMEOUT")
+        pid = int(pid_box.value)
+        self.assertGreater(pid, 0)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+
+    def test_worker_child_reaped_after_success(self):
+        runner = FakeToolRunner()
+        pid_box = multiprocessing.Value("i", 0)
+        outputs = [NULL_TOOL, NULL_TOOL, json.dumps(diagnosis())]
+
+        def fast_model(message, history):
+            pid_box.value = os.getpid()
+            return outputs.pop(0), {}
+
+        env = run(model=fast_model, runner=runner)
+        self.assertTrue(env["success"])
+        pid = int(pid_box.value)
+        self.assertGreater(pid, 0)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+
+    def test_typed_provider_timeout_meta_maps_to_model_timeout(self):
+        runner = FakeToolRunner()
+
+        def timed_out_model(message, history):
+            return "[Local LLM Error] Timeout", {"provider_error": "TIMEOUT"}
+
+        env = run(model=timed_out_model, runner=runner)
+        self.assertEqual(env["response"]["analysis_failure"], "MODEL_TIMEOUT")
+        self.assertIn("provider reported TIMEOUT", " ".join(env["orchestrator"]["notes"]))
+
+    def test_typed_provider_error_meta_maps_to_provider_error(self):
+        runner = FakeToolRunner()
+
+        def failed_model(message, history):
+            return "[Local LLM Error] Connection failed", {
+                "provider_error": "CONNECTION"
+            }
+
+        env = run(model=failed_model, runner=runner)
+        self.assertEqual(env["response"]["analysis_failure"], "PROVIDER_ERROR")
+
+    def test_worker_unavailable_fails_closed(self):
+        runner = FakeToolRunner()
+        model = FakeModel([NULL_TOOL, NULL_TOOL, json.dumps(diagnosis())])
+        from ai.agent import model_worker as MW
+
+        with mock.patch.object(
+            MW.multiprocessing,
+            "get_context",
+            side_effect=ValueError("fork unavailable"),
+        ):
+            env = run(model=model, runner=runner)
+        self.assertEqual(env["response"]["analysis_failure"], "PROVIDER_ERROR")
+        self.assertIn("cancellable provider worker unavailable", " ".join(
+            env["orchestrator"]["notes"]
+        ))
 
     def test_incident_watchdog_bounds_entry(self):  # row 19
         runner = FakeToolRunner()

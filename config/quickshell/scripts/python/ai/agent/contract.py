@@ -64,6 +64,18 @@ KIND_FOR_TOOL: dict[str, str] = {
 
 ACTION_KINDS: tuple[str, ...] = ("explain_only", "manual_guidance")
 
+# AC #7: the write-action vocabulary exists but is deliberately unreachable.
+# It is NOT part of ACTION_KINDS, no executor maps these values, and the
+# validator rejects every one of them in Release 1.
+RESERVED_WRITE_ACTIONS: tuple[str, ...] = (
+    "service_control",
+    "container_lifecycle",
+    "recreate_container",
+    "package_install",
+    "file_edit",
+    "host_command",
+)
+
 # Closed guidance-code registry (§11.1). Semantic *gating* (minimum-evidence
 # checks per row) is the Phase-4 policy engine; Phase 3 binds kinds only.
 GUIDANCE_CODES: frozenset[str] = frozenset(

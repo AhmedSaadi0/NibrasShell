@@ -18,10 +18,9 @@ Call-role state machine over ONE incident envelope:
 
 Deadlines (§10.3):
 - every model call runs under an independent per-request wall-clock supervisor
-  (``model_call_deadline_s``; default 120 s): the call is isolated in a worker
-  thread and the deadline discards the RESULT (a Python thread cannot be
-  hard-killed — recorded as an honest limitation; provider hard-cancel /
-  process isolation is the Phase-6 calibration row);
+  (``model_call_deadline_s``; default 120 s): the provider callable executes in
+  a cancellable child process (``agent.model_worker``) and the deadline sends
+  SIGTERM, then SIGKILL after a short grace period;
 - an envelope-level incident watchdog (``incident_watchdog_s``; 300 s) bounds
   the entire run — turn assembly, tool calls, retries, parsing;
 - tool subprocesses own their own 5 s deadline + SIGTERM/SIGKILL + 1 MiB cap
@@ -36,8 +35,8 @@ untouched — the orchestrator consumes an injectable
 
 from __future__ import annotations
 
+import hashlib
 import json
-import threading
 import time
 import traceback
 from typing import Any, Callable
@@ -46,12 +45,24 @@ try:  # package layout (scripts/python on sys.path)
     from . import contract as contract_mod
     from . import tools as tools_mod
     from . import prompt_agent as prompt_mod
+    from .model_worker import (
+        ModelCallError,
+        ModelCallTimeout,
+        ModelCallWorkerUnavailable,
+        ModelWorker,
+    )
     from .. import audit as audit_mod
     from ..evidence import redact as _redact
 except ImportError:  # flat layout (cwd=scripts/python/ai)
     from agent import contract as contract_mod  # type: ignore[no-redef]
     from agent import tools as tools_mod  # type: ignore[no-redef]
     from agent import prompt_agent as prompt_mod  # type: ignore[no-redef]
+    from agent.model_worker import (  # type: ignore[no-redef]
+        ModelCallError,
+        ModelCallTimeout,
+        ModelCallWorkerUnavailable,
+        ModelWorker,
+    )
     import audit as audit_mod  # type: ignore[no-redef]
     from evidence import redact as _redact  # type: ignore[no-redef]
 
@@ -96,55 +107,74 @@ def _redact_note(text: str) -> str:
     return clean[:200]
 
 
+def _payload_sha256(message: str, history: list) -> str:
+    """Audit a hash of the redacted provider payload, never the payload."""
+    try:
+        data = json.dumps(
+            {"message": str(message), "history": history},
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    except Exception:  # pragma: no cover — default=str covers normal values
+        data = f"{message}\n{history!r}".encode("utf-8", "replace")
+    return hashlib.sha256(data).hexdigest()
+
+
 # ─── per-request wall-clock supervisor (§10.3) ───────────────────────────────
 
 
 class _ModelSupervisor:
-    """Wait on the provider call with a hard deadline; on expiry the partial
-    result is DISCARDED (the worker thread is daemonized — honest limitation;
-    hard-cancel / process isolation is the Phase-6 row)."""
+    """Wait on a cancellable provider worker child with a hard deadline.
+
+    The child is started lazily on the first model call and reused for the
+    subsequent turns of the same incident.  A deadline or provider failure
+    terminates and reaps it; no thread is left behind.
+    """
 
     def __init__(self, model_call: Callable[..., Any], notes: list[str]) -> None:
-        self._model_call = model_call
+        self._worker = ModelWorker(model_call)
         self._notes = notes
 
     def request(
         self, message: str, history: list, deadline_s: float
     ) -> tuple[str | None, str | None]:
         """→ (text, None) on success, (None, reason_code) on failure."""
-        box: dict[str, Any] = {}
-
-        def _worker() -> None:
-            try:
-                result = self._model_call(message, history)
-                if isinstance(result, tuple) and len(result) == 2:
-                    text, _meta = result  # (text, meta) seam (LLMProvider.generate)
-                else:
-                    text, _meta = result, {}
-                box["text"] = text
-            except BaseException as exc:  # provider errors are data, never crashes
-                box["error"] = f"{type(exc).__name__}: {_redact_note(exc)}"
-
-        thread = threading.Thread(
-            target=_worker, name="nibras-orchestrator-model-call", daemon=True
-        )
-        thread.start()
-        thread.join(max(deadline_s, 0.01))
-        if thread.is_alive():
+        try:
+            text, provider_error = self._worker.request(
+                message, history, deadline_s
+            )
+        except ModelCallTimeout as exc:
             self._notes.append(
-                "supervisor: model deadline hit — partial result DISCARDED; "
-                "worker thread daemonized (cannot be hard-killed; provider "
-                "hard-cancel is the Phase-6 calibration row)"
+                "supervisor: model deadline hit — worker child terminated "
+                f"({_redact_note(exc)}); partial result DISCARDED"
             )
             return None, F_MODEL_TIMEOUT
-        if "error" in box:
-            self._notes.append(f"model_call raised {box['error']}")
+        except ModelCallWorkerUnavailable as exc:
+            self._notes.append(f"supervisor: {_redact_note(exc)}")
             return None, F_PROVIDER_ERROR
-        text = box.get("text")
+        except ModelCallError as exc:
+            self._notes.append(f"model_call raised {_redact_note(exc)}")
+            return None, F_PROVIDER_ERROR
+        except BaseException as exc:  # provider errors are data, never crashes
+            self._notes.append(
+                f"model_call raised {type(exc).__name__}: {_redact_note(exc)}"
+            )
+            return None, F_PROVIDER_ERROR
+        if isinstance(provider_error, str) and provider_error:
+            # LocalProvider returns a typed meta status instead of raising so
+            # the legacy v1 path keeps its old result shape.
+            self._notes.append(f"provider reported {_redact_note(provider_error)}")
+            if provider_error.upper() == "TIMEOUT":
+                return None, F_MODEL_TIMEOUT
+            return None, F_PROVIDER_ERROR
         if not isinstance(text, str):
             self._notes.append("model_call returned non-string text")
             return None, F_PROVIDER_ERROR
         return text, None
+
+    def close(self) -> None:
+        self._worker.close()
 
 
 # ─── the orchestrator run ────────────────────────────────────────────────────
@@ -223,32 +253,43 @@ class OrchestratorRun:
         self.calls_used += 1
         call_index = self.calls_used
         started = time.perf_counter()
+        payload_sha256 = _payload_sha256(message, self.history)
         text, fail = self.supervisor.request(
             message, self.history, self._effective_model_deadline()
         )
         if fail is not None:
-            self._record_model_latency(call_index, role, started, fail)
+            self._record_model_latency(
+                call_index, role, started, fail, payload_sha256
+            )
             return None, fail
         value, parse_fail = contract_mod.parse_contract_json(
             text, max_bytes=MODEL_OUTPUT_MAX_BYTES
         )
-        self._record_model_latency(call_index, role, started, parse_fail or "ok")
+        self._record_model_latency(
+            call_index, role, started, parse_fail or "ok", payload_sha256
+        )
         if parse_fail is not None:
             return None, parse_fail
         return value, None
 
     def _record_model_latency(
-        self, call_index: int, role: str, started: float, outcome: str
+        self,
+        call_index: int,
+        role: str,
+        started: float,
+        outcome: str,
+        payload_sha256: str | None = None,
     ) -> None:
         elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
-        self.model_call_latencies_ms.append(
-            {
-                "call_index": call_index,
-                "role": role,
-                "elapsed_ms": elapsed_ms,
-                "outcome": outcome,
-            }
-        )
+        record = {
+            "call_index": call_index,
+            "role": role,
+            "elapsed_ms": elapsed_ms,
+            "outcome": outcome,
+        }
+        if payload_sha256:
+            record["payload_sha256"] = payload_sha256
+        self.model_call_latencies_ms.append(record)
 
     # ─── prompt assembly (DATA framing §10.5) ────────────────────────────
 
@@ -783,6 +824,8 @@ class OrchestratorRun:
                 + traceback.format_exc(limit=4).replace("\n", " | ")[:600]
             )
             return self._safe_failure(F_INTERNAL)
+        finally:
+            self.supervisor.close()
 
     def _run_bounded(self) -> dict[str, Any]:
         if (
