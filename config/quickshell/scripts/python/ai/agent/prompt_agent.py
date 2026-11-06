@@ -25,7 +25,19 @@ instructions (§10.4-B, §11.1). QML/UI entry is Phase 5 scope (`18).
 from __future__ import annotations
 
 # ─── system prompt (sent with EVERY orchestrator model call) ─────────────────
+# Phase 5.4: the shared $aiPreferredLanguage placeholder is kept here so the
+# existing config.get_provider() substitution injects the user-selected
+# language into the V2 system prompt exactly as it does for V1 presets.
+# build_system_prompt() can also substitute directly for library callers.
 
+_LANGUAGE_DIRECTIVE = """\
+Respond strictly in $aiPreferredLanguage.
+Write ALL model-authored natural-language prose (incident_summary,
+findings.text, possible_causes, missing_evidence, diagnostic_questions,
+uncertainties, rationale, stated_purpose) in that language.
+Keep JSON structure, field names, schema identifiers, status enums, tool
+names, guidance_code, severity, risk_level, action_kind, evidence_refs,
+target_ref and cursor exactly as required by the contracts."""
 
 AGENT_SYSTEM_PROMPT_EN = """You are the Nibras diagnostics agent (Release 1).
 You analyze ONE incident record from the user's system and produce typed,
@@ -82,6 +94,16 @@ OUTPUT DISCIPLINE
   commentary outside the JSON.
 - every string value you author stays explanatory analysis; the backend
   labels it as model-authored and unverified.
+
+LANGUAGE
+- Respond strictly in $aiPreferredLanguage.
+- Write ALL model-authored natural-language prose (incident_summary,
+  findings.text, possible_causes, missing_evidence, diagnostic_questions,
+  uncertainties, rationale, stated_purpose) in that language. Explain
+  English technical identifiers in that language where helpful.
+- Keep JSON structure, field names, schema identifiers, status enums, tool
+  names, guidance_code, severity, risk_level, action_kind, evidence_refs,
+  target_ref and cursor exactly as required by the contracts.
 """
 
 # Contract demos rendered per role (data attached by the orchestrator).
@@ -175,6 +197,16 @@ def build_repair_notice(
     )
 
 
-def build_system_prompt() -> str:
-    """System prompt for every orchestrator call (static; data joined in orchestrator)."""
-    return AGENT_SYSTEM_PROMPT_EN
+def build_system_prompt(preferred_language: str | None = None) -> str:
+    """System prompt for every orchestrator call.
+
+    When *preferred_language* is supplied the shared
+    ``$aiPreferredLanguage`` placeholder is substituted directly (mirroring
+    ``config.get_provider`` for V1 presets).  When omitted, the placeholder
+    is left intact for ``config.get_provider`` to fill — both paths keep the
+    prompt dynamic for every supported language, never hardcoded.
+    """
+    if preferred_language is None:
+        return AGENT_SYSTEM_PROMPT_EN
+    lang = preferred_language.strip() or "English"
+    return AGENT_SYSTEM_PROMPT_EN.replace("$aiPreferredLanguage", lang)

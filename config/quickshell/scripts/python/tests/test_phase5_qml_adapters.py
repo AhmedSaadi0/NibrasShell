@@ -223,6 +223,18 @@ class QmlSourceContractTests(unittest.TestCase):
         self.assertNotIn("wl-copy", analysis)
         self.assertNotIn("CommandBox", analysis)
 
+    def test_boot_analyzer_reads_nested_policy_decision_and_template(self):
+        source = qml_text("services/system/BootAnalyzer.qml")
+        # The V2 envelope nests the authoritative decision and backend template
+        # under response.response; the adapter must read those exact fields and
+        # must never derive a template from model prose.
+        self.assertIn("validationWrapper.guidance_decision", source)
+        self.assertIn("payload.guidance_template", source)
+        self.assertIn("validationWrapper.template", source)
+        self.assertIn("template.lines", source)
+        self.assertIn('validationStatus = "STATUS_ABSENT"', source)
+        self.assertIn("guidance_lines: guidanceLines", source)
+
     def test_manual_checklist_is_documented(self):
         notes = (REPO / "docs/diag-contract-notes.md").read_text(encoding="utf-8")
         self.assertIn("Phase 5", notes)

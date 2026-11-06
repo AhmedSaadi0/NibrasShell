@@ -217,8 +217,10 @@ class OrchestratorRun:
         incident_watchdog_s: float = INCIDENT_WATCHDOG_S,
         tool_timeout_s: float = tools_mod.TOOL_DEADLINE_S,
         audit_logger: Any = None,
+        preferred_language: str | None = None,
     ) -> None:
         self.incident = incident
+        self.preferred_language = preferred_language
         self.registry = contract_mod.RefRegistry.from_incident(incident)
         self.notes: list[str] = []
         self.supervisor = _ModelSupervisor(model_call, self.notes)
@@ -343,30 +345,65 @@ class OrchestratorRun:
             f"Backend-issued references available: [{issued}]. {cursor}.\n"
         )
 
+    def _language_line(self) -> str:
+        """Backend-authored language directive for this run's messages.
+
+        Empty when no language was supplied (library/tests keep the legacy
+        English-only wording).  Otherwise the selected language is stated
+        explicitly so every evidence/final turn carries it alongside the
+        system prompt; the directive never enters the DATA blocks.
+        """
+        lang = (self.preferred_language or "").strip()
+        if not lang:
+            return ""
+        return (
+            f"LANGUAGE: Respond strictly in {lang}. "
+            "Write ALL model-authored natural-language prose "
+            "(incident_summary, findings.text, possible_causes, "
+            "missing_evidence, diagnostic_questions, uncertainties, "
+            "rationale, stated_purpose) in that language. "
+            "Keep JSON structure, field names, schema identifiers, status "
+            "enums, tool names, guidance_code, severity, risk_level, "
+            "action_kind, evidence_refs, target_ref and cursor exactly as "
+            "required by the contracts."
+        )
+
     def _evidence_message(self, role: str, repair_notice: str | None) -> str:
-        parts = [
-            self._role_line(role),
-            prompt_mod.ROLE_TOOL_REQUEST_DEMO,
-            self._incident_block(),
-            "\n",
-            self._tool_output_block(),
-            'Reply with AT MOST ONE nibras.tool_request/v1 object (use "tool": null '
-            "if no further evidence is needed). No other text.",
-        ]
+        lang = self._language_line()
+        parts = []
+        if lang:
+            parts.append(lang)
+        parts.extend(
+            [
+                self._role_line(role),
+                prompt_mod.ROLE_TOOL_REQUEST_DEMO,
+                self._incident_block(),
+                "\n",
+                self._tool_output_block(),
+                'Reply with AT MOST ONE nibras.tool_request/v1 object (use "tool": null '
+                "if no further evidence is needed). No other text.",
+            ]
+        )
         if repair_notice:
             parts.insert(0, repair_notice + "\n")
         return "\n".join(parts)
 
     def _final_message(self, repair_notice: str | None) -> str:
-        parts = [
-            "FINAL DIAGNOSIS CALL — tool requests are FORBIDDEN here.\n",
-            self._role_line("C"),
-            prompt_mod.ROLE_DIAGNOSIS_DEMO,
-            self._incident_block(),
-            "\n",
-            self._tool_output_block(),
-            "Reply with exactly one nibras.diagnosis/v1 object. No other text.",
-        ]
+        lang = self._language_line()
+        parts = []
+        if lang:
+            parts.append(lang)
+        parts.extend(
+            [
+                "FINAL DIAGNOSIS CALL — tool requests are FORBIDDEN here.\n",
+                self._role_line("C"),
+                prompt_mod.ROLE_DIAGNOSIS_DEMO,
+                self._incident_block(),
+                "\n",
+                self._tool_output_block(),
+                "Reply with exactly one nibras.diagnosis/v1 object. No other text.",
+            ]
+        )
         if repair_notice:
             parts.insert(0, repair_notice + "\n")
         return "\n".join(parts)
@@ -710,7 +747,10 @@ class OrchestratorRun:
             return None
         try:
             result = policy_engine.evaluate_diagnosis(
-                model_value, self.registry, self.incident
+                model_value,
+                self.registry,
+                self.incident,
+                preferred_language=self.preferred_language,
             )
         except Exception as exc:  # noqa: BLE001 — policy failure is a safe failure
             self.notes.append(
@@ -989,6 +1029,7 @@ def run_orchestrator(
     incident_watchdog_s: float = INCIDENT_WATCHDOG_S,
     tool_timeout_s: float = tools_mod.TOOL_DEADLINE_S,
     audit_logger: Any = None,
+    preferred_language: str | None = None,
 ) -> dict[str, Any]:
     """Bounded orchestration of ONE ``nibras.incident/v1`` envelope.
 
@@ -1008,5 +1049,6 @@ def run_orchestrator(
         incident_watchdog_s=incident_watchdog_s,
         tool_timeout_s=tool_timeout_s,
         audit_logger=audit_logger,
+        preferred_language=preferred_language,
     )
     return run.run()

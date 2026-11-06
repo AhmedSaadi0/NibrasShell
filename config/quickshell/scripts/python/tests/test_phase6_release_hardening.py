@@ -639,6 +639,107 @@ class TestProviderLimits(unittest.TestCase):
         self.assertIn("orchestrator supervisor", text)
 
 
+# ═══ V2 production activation (Phase 5.2) ═══════════════════════════════════
+
+
+class TestV2ProductionActivation(unittest.TestCase):
+    """The boot-solution UI command must launch V2, and its structured-evidence
+    flag must travel through the existing QML process-environment path without
+    forcing a provider or changing any other AI workflow."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = (REPO / "config" / "App.qml").read_text(encoding="utf-8")
+        cls.service = (REPO / "services" / "AiService.qml").read_text(
+            encoding="utf-8"
+        )
+        cls.task = (REPO / "services" / "AiTask.qml").read_text(encoding="utf-8")
+        cls.boot = (REPO / "services" / "system" / "BootAnalyzer.qml").read_text(
+            encoding="utf-8"
+        )
+
+    @staticmethod
+    def _property_line(source, name):
+        for line in source.splitlines():
+            if name in line and "property var" in line:
+                return line
+        return ""
+
+    def test_boot_solution_command_activates_v2_only(self):
+        solution = self._property_line(self.app, "callBootSolutionAi")
+        self.assertTrue(solution)
+        self.assertRegex(solution, r'"--orchestrator"\s*,\s*"v2"')
+        self.assertIn('"boot_solution"', solution)
+
+        # The boot summary and every other AI feature stay on V1.
+        analysis = self._property_line(self.app, "callBootAnalysisAi")
+        self.assertTrue(analysis)
+        self.assertNotIn("--orchestrator", analysis)
+        for name in (
+            "callSpikeAnalysisAi",
+            "callWeatherAi",
+            "callMusicAi",
+            "callIdleCapsuleAi",
+            "callTodoAi",
+            "callSystemActionAi",
+            "callColorPaletteAi",
+        ):
+            with self.subTest(name=name):
+                line = self._property_line(self.app, name)
+                self.assertTrue(line)
+                self.assertNotIn("--orchestrator", line)
+
+    def test_existing_provider_model_and_persona_are_preserved(self):
+        initial = self._property_line(self.app, "initialAiCommand")
+        solution = self._property_line(self.app, "callBootSolutionAi")
+        self.assertIn('"--provider", aiProvider', initial)
+        self.assertIn('"--model", root.systemAiModel', solution)
+        # Phase 5.3: the credential is not in argv; it is handed to AiTask
+        # in memory and written to the child's stdin.
+        self.assertNotIn("--api_key", solution)
+        self.assertIn('"--credential-stdin"', solution)
+        self.assertIn('"--user_persona", root.systemPersona', solution)
+        # Provider choice remains a user setting; no local/Ollama override.
+        self.assertNotIn('"--provider", "local"', self.app)
+        self.assertNotIn('"--provider", "ollama"', self.app)
+        self.assertNotIn("127.0.0.1", self.app)
+        self.assertNotIn("11434", self.app)
+
+    def test_structured_evidence_flag_is_scoped_to_boot_solutions(self):
+        self.assertEqual(
+            self.boot.count("NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE"), 1
+        )
+        request_block = self.boot.split("function requestBootSolutions", 1)[1]
+        request_block = request_block.split("function refreshBootDetails", 1)[0]
+        self.assertIn('"NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE": "1"', request_block)
+        self.assertIn("environment:", request_block)
+
+        # AiService forwards the per-task environment...
+        self.assertIn(
+            '"environment": (options && options.environment)',
+            self.service,
+        )
+        # ...and AiTask applies it to the child before QProcess starts.
+        self.assertIn("property var environment", self.task)
+        self.assertIn("aiProcess.environment = task.environment", self.task)
+        self.assertLess(
+            self.task.index("aiProcess.environment = task.environment"),
+            self.task.index("aiProcess.running = true"),
+        )
+
+    def test_activation_does_not_hardcode_a_provider_in_launcher_files(self):
+        for name, source in (
+            ("App.qml", self.app),
+            ("AiService.qml", self.service),
+            ("AiTask.qml", self.task),
+            ("BootAnalyzer.qml", self.boot),
+        ):
+            with self.subTest(file=name):
+                self.assertNotIn("127.0.0.1", source)
+                self.assertNotIn("localhost", source)
+                self.assertNotIn("11434", source)
+
+
 # ═══ QML lifecycle review ═══════════════════════════════════════════════════
 
 

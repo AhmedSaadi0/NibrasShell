@@ -283,7 +283,12 @@ def _linked_evidence_ids(
     return sorted(target_ids)
 
 
-def evaluate_diagnosis(payload: Any, registry: Any, incident: dict) -> dict[str, Any]:
+def evaluate_diagnosis(
+    payload: Any,
+    registry: Any,
+    incident: dict,
+    preferred_language: str | None = None,
+) -> dict[str, Any]:
     """Full policy evaluation for one ``nibras.diagnosis/v1`` payload.
 
     Returns ``{"status", "decision", "template", "analysis"}`` where
@@ -450,7 +455,9 @@ def evaluate_diagnosis(payload: Any, registry: Any, incident: dict) -> dict[str,
             }
 
     # 5. backend rendering — the ONLY path that produces operational text
-    template = _templates.render(code, record, incident, registry)
+    template = _templates.render(
+        code, record, incident, registry, language=preferred_language
+    )
     decision = _contract.guidance_decision(
         "rd-1",
         target_ref,

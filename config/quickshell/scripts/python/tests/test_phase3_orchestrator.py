@@ -1679,9 +1679,14 @@ class TestProductionPolicyIntegration(unittest.TestCase):
         real = ORC.policy_engine.evaluate_diagnosis
         calls = []
 
-        def spy(model_value, registry, incident_obj):
+        def spy(model_value, registry, incident_obj, preferred_language=None):
             calls.append((model_value, registry, incident_obj))
-            return real(model_value, registry, incident_obj)
+            return real(
+                model_value,
+                registry,
+                incident_obj,
+                preferred_language=preferred_language,
+            )
 
         with mock.patch.object(
             ORC.policy_engine, "evaluate_diagnosis", side_effect=spy
@@ -1852,9 +1857,14 @@ class TestProductionPolicyIntegration(unittest.TestCase):
         real = ORC.policy_engine.evaluate_diagnosis
         calls = []
 
-        def spy(model_value, registry, incident_obj):
+        def spy(model_value, registry, incident_obj, preferred_language=None):
             calls.append((model_value, registry, incident_obj))
-            return real(model_value, registry, incident_obj)
+            return real(
+                model_value,
+                registry,
+                incident_obj,
+                preferred_language=preferred_language,
+            )
 
         with mock.patch.object(
             ORC.policy_engine, "evaluate_diagnosis", side_effect=spy
@@ -2209,6 +2219,7 @@ class TestMainWiring(unittest.TestCase):
         config_obj.get_boot_incident = fake_bundle
         args = pytypes.SimpleNamespace()
         args.orchestrator = "v2"
+        args.preferred_language = "English"
         buf = io.StringIO()
         try:
             with contextlib.redirect_stdout(buf):
@@ -2221,7 +2232,13 @@ class TestMainWiring(unittest.TestCase):
             self.assertIn(key, envelope)
         self.assertIn("orchestrator", envelope)
         self.assertTrue(envelope["success"])
-        self.assertIn("validation", envelope["response"]["response"])
+        payload = envelope["response"]["response"]
+        self.assertIn("validation", payload)
+        decision = payload["validation"]["guidance_decision"]
+        self.assertEqual(decision["status"], C.STATUS_GUIDANCE_VALIDATED)
+        template = payload["guidance_template"]
+        self.assertEqual(template["source"], "backend_guidance_template/v1")
+        self.assertEqual(envelope["response"]["guidance_template"], template)
         self.assertEqual(calls, {"provider": 1, "incident": 1})
 
     def test_no_incidents_collected_is_safe(self):
@@ -2237,6 +2254,7 @@ class TestMainWiring(unittest.TestCase):
         config_obj.get_boot_incident = lambda runner=None, limit=200: None
         args = pytypes.SimpleNamespace()
         args.orchestrator = "v2"
+        args.preferred_language = "English"
         buf = io.StringIO()
         try:
             with contextlib.redirect_stdout(buf):
@@ -2249,6 +2267,8 @@ class TestMainWiring(unittest.TestCase):
             envelope["response"]["analysis_failure"], "NO_INCIDENTS_COLLECTED"
         )
         self.assertTrue(envelope["response"]["no_action_taken"])
+        self.assertNotIn("guidance_template", envelope["response"])
+        self.assertNotIn("solutions", envelope["response"])
 
 
 # ═══ prompt content (§10.2-B) ════════════════════════════════════════════════

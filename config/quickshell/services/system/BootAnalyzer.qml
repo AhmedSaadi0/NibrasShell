@@ -331,7 +331,14 @@ QtObject {
         }, function (errorMessage) {
             console.error("[BootAnalyzer] Boot solutions error: " + errorMessage);
             root.bootSolutionStatus = "ERROR";
-        }, "BootSolutions", 0);
+        }, "BootSolutions", 0, {
+            credential: App.systemAiCredential,
+            environment: {
+                // V2 reads structured journald/podman evidence; this setting is
+                // scoped to the boot-solution child only.
+                "NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE": "1"
+            }
+        });
     }
 
     function refreshBootDetails() {
@@ -373,7 +380,7 @@ QtObject {
         }, function (errorMessage) {
             console.error("[BootAnalyzer] AI Process Error: " + errorMessage);
             root.bootAnalysisStatus = "ERROR";
-        }, "BootDetails", 0);
+        }, "BootDetails", 0, { credential: App.systemAiCredential });
     }
 
     function retryBootAnalysis() {

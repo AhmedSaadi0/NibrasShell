@@ -240,9 +240,13 @@ automatic state-changing action.
 ## 9. Release/rollback note
 
 This phase is additive. The v2 orchestration path remains behind
-`--orchestrator v2`; the production v1 path is untouched. Release and rollback
-remain user-managed; no branch, commit, push, or rollback operation was
-performed by the agent.
+`--orchestrator v2`; the production v1 path is untouched. The Phase 5.2 UI
+activation passes `--orchestrator v2` only to the boot-solution command; the
+boot-summary and all other AI workflows remain V1. The boot-solution child
+receives `NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1` through the existing
+Quickshell `Process.environment` mechanism, scoped to that child. No provider
+is forced. Release and rollback remain user-managed; no branch, commit, push,
+or rollback operation was performed by the agent.
 
 ## 10. Production policy gate and backend guidance schema
 
@@ -323,3 +327,28 @@ Audit outcomes (metadata-only JSONL, same redaction rules):
 | Provider timeout | `MODEL_TIMEOUT` | — |
 | Provider error | `PROVIDER_ERROR` | — |
 | Incident watchdog | `INCIDENT_DEADLINE_EXCEEDED` | — |
+
+## 11. Credential transport (Phase 5.3)
+
+API credentials are no longer passed in process arguments. QML keeps the
+resolved credential in memory and `AiTask` writes exactly one bounded JSON line
+to the child's stdin after `Process.started`:
+
+```text
+{"credential":"<secret-or-empty>"}\n
+```
+
+`main.py` and `list-gemini.py` take `--credential-stdin` and read that line
+before provider initialization. The hidden legacy `--api_key` option is
+rejected with `CREDENTIAL_TRANSPORT_ERROR:ARGV_FORBIDDEN` without using or
+echoing the value. Malformed/missing input fails closed with
+`CREDENTIAL_TRANSPORT_ERROR:*`; authenticated providers fail with
+`ProviderConfigurationError: MISSING_API_CREDENTIAL` when no credential is
+available. `local` and `ollama` remain credential-free.
+
+Security boundary: the credential is absent from argv and from the child
+environment; it remains in QML/Python/worker process memory as required for
+authentication. This does not protect against privileged memory or pipe
+inspection (root/ptrace), and at-rest storage in the user config file is
+unchanged. The subprocess regression checks `/proc/<pid>/cmdline` and
+`/proc/<pid>/environ` only; no QML runtime is launched by the test suite.

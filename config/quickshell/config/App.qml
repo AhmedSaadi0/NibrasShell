@@ -57,6 +57,12 @@ Singleton {
     property alias musicAiApiKey: root.config.musicAiApiKey
     property alias systemAiApiKey: root.config.systemAiApiKey
 
+    // Phase 5.3: resolved credentials are handed to AiService/AiTask in
+    // memory only. They are never added to process arguments.
+    readonly property string systemAiCredential: (root.systemAiApiKey !== "" ? root.systemAiApiKey : root.aiApiKey)
+    readonly property string weatherAiCredential: (root.weatherAiApiKey !== "" ? root.weatherAiApiKey : root.aiApiKey)
+    readonly property string musicAiCredential: (root.musicAiApiKey !== "" ? root.musicAiApiKey : root.aiApiKey)
+
     // AI Persona
     property alias weatherPersona: root.config.weatherPersona
     property alias musicPersona: root.config.musicPersona
@@ -315,17 +321,17 @@ Singleton {
 
             readonly property var initialAiCommand: [pythonPath, mainAI, "--preferred_language", root.aiPreferredLanguage, "--provider", aiProvider]
 
-            readonly property var callBootAnalysisAi: [...initialAiCommand, "--api_key", (root.systemAiApiKey !== "" ? root.systemAiApiKey : root.aiApiKey), "--preset", "boot_analyze", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
-            readonly property var callBootSolutionAi: [...initialAiCommand, "--api_key", (root.systemAiApiKey !== "" ? root.systemAiApiKey : root.aiApiKey), "--preset", "boot_solution", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
-            readonly property var callSpikeAnalysisAi: [...initialAiCommand, "--api_key", (root.systemAiApiKey !== "" ? root.systemAiApiKey : root.aiApiKey), "--preset", "spike_analyze", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
-            readonly property var callWeatherAi: [...initialAiCommand, "--api_key", (root.weatherAiApiKey !== "" ? root.weatherAiApiKey : root.aiApiKey), "--preset", "weather", "--user_persona", root.weatherPersona, "--model", root.weatherAiModel]
-            readonly property var callMusicAi: [...initialAiCommand, "--api_key", (root.musicAiApiKey !== "" ? root.musicAiApiKey : root.aiApiKey), "--preset", "music", "--user_persona", root.musicPersona, "--model", root.musicAiModel]
-            readonly property var callIdleCapsuleAi: [...initialAiCommand, "--api_key", (root.systemAiApiKey !== "" ? root.systemAiApiKey : root.aiApiKey), "--preset", "idle_capsule", "--json_mode", "--model", root.systemAiModel]
+            readonly property var callBootAnalysisAi: [...initialAiCommand, "--credential-stdin", "--preset", "boot_analyze", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
+            readonly property var callBootSolutionAi: [...initialAiCommand, "--credential-stdin", "--preset", "boot_solution", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel, "--orchestrator", "v2"]
+            readonly property var callSpikeAnalysisAi: [...initialAiCommand, "--credential-stdin", "--preset", "spike_analyze", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
+            readonly property var callWeatherAi: [...initialAiCommand, "--credential-stdin", "--preset", "weather", "--user_persona", root.weatherPersona, "--model", root.weatherAiModel]
+            readonly property var callMusicAi: [...initialAiCommand, "--credential-stdin", "--preset", "music", "--user_persona", root.musicPersona, "--model", root.musicAiModel]
+            readonly property var callIdleCapsuleAi: [...initialAiCommand, "--credential-stdin", "--preset", "idle_capsule", "--json_mode", "--model", root.systemAiModel]
             readonly property var callIdleCapsuleHoverBulkAi: [...callIdleCapsuleAi, "--message_key", "idle_capsule_bulk"]
             readonly property var callIdleCapsuleHoverStartupAi: [...callIdleCapsuleAi, "--message_key", "idle_capsule_startup"]
-            readonly property var callTodoAi: [...initialAiCommand, "--api_key", (root.systemAiApiKey !== "" ? root.systemAiApiKey : root.aiApiKey), "--preset", "todo", "--json_mode", "--user_persona", root.todoPersona, "--model", root.systemAiModel]
-            readonly property var callSystemActionAi: [...initialAiCommand, "--api_key", (root.systemAiApiKey !== "" ? root.systemAiApiKey : root.aiApiKey), "--preset", "system_action", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
-            readonly property var callColorPaletteAi: [...initialAiCommand, "--api_key", (root.systemAiApiKey !== "" ? root.systemAiApiKey : root.aiApiKey), "--preset", "color_palette", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
+            readonly property var callTodoAi: [...initialAiCommand, "--credential-stdin", "--preset", "todo", "--json_mode", "--user_persona", root.todoPersona, "--model", root.systemAiModel]
+            readonly property var callSystemActionAi: [...initialAiCommand, "--credential-stdin", "--preset", "system_action", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
+            readonly property var callColorPaletteAi: [...initialAiCommand, "--credential-stdin", "--preset", "color_palette", "--json_mode", "--user_persona", root.systemPersona, "--model", root.systemAiModel]
         }
 
         readonly property QtObject bash: QtObject {
@@ -355,6 +361,11 @@ Singleton {
         readonly property string country: root.country
     }
 
+    function credentialStdinLine(credential) {
+        // One bounded JSON line; the value never enters argv or the environment.
+        return JSON.stringify({ credential: credential || "" }) + "\n";
+    }
+
     function dispatchCommand(description, commandArray) {
         if (!Array.isArray(commandArray) || commandArray.length === 0) {
             console.warn(`Skipping empty command: ${description}`);
@@ -373,7 +384,9 @@ Singleton {
     Process {
         id: fetchMusicModelsProcess
 
-        command: [root.pythonPath, root.scripts.python.listGemini, "--api_key", (root.musicAiApiKey !== "" ? root.musicAiApiKey : root.aiApiKey)]
+        command: [root.pythonPath, root.scripts.python.listGemini, "--credential-stdin"]
+        stdinEnabled: true
+        onStarted: write(root.credentialStdinLine(root.musicAiCredential))
 
         stdout: StdioCollector {
             onStreamFinished: {
@@ -388,7 +401,9 @@ Singleton {
     Process {
         id: fetchWeatherModelsProcess
 
-        command: [root.pythonPath, root.scripts.python.listGemini, "--api_key", (root.weatherAiApiKey !== "" ? root.weatherAiApiKey : root.aiApiKey)]
+        command: [root.pythonPath, root.scripts.python.listGemini, "--credential-stdin"]
+        stdinEnabled: true
+        onStarted: write(root.credentialStdinLine(root.weatherAiCredential))
 
         stdout: StdioCollector {
             onStreamFinished: {

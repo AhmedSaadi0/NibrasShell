@@ -157,7 +157,7 @@ Singleton {
             console.error("[HoverResponseManager] AI request failed:", errorMessage);
             if (hoverResponses.length === 0)
                 hoverResponses = fallbackResponses.slice(0);
-        }, "hoverResponsesIdle");
+        }, "hoverResponsesIdle", 1, { credential: App.systemAiCredential });
     }
 
     function requestStartupResponses(count, allowReplace) {
@@ -220,7 +220,7 @@ Singleton {
             console.error("[HoverResponseManager] AI request failed:", errorMessage);
             if (hoverResponses.length === 0)
                 hoverResponses = fallbackResponses.slice(0);
-        }, "hoverResponsesStartup", 0);
+        }, "hoverResponsesStartup", 0, { credential: App.systemAiCredential });
     }
 
     function pickHoverResponse() {

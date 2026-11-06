@@ -138,6 +138,7 @@ def _unit_facts(record: dict[str, Any]) -> str:
 # ─── authored operational skeletons (AVOID command-shaped tokens) ────────────
 
 _LABEL = "Backend guidance"
+_LABEL_AR = "إرشاد خلفي"
 
 _STATIC_LINES: dict[str, list[str]] = {
     "G_EXPLAIN_ONLY": [
@@ -180,6 +181,83 @@ _STATIC_LINES: dict[str, list[str]] = {
     ],
 }
 
+# Phase 5.4 deterministic Arabic variant: the same backend-owned,
+# command-free skeletons that the QA checklist can verify.  Placeholders
+# ({container_facts} / {unit_facts} / {update_scope}) are identical to the
+# English registry so backend-recorded facts fill them the same way; only
+# the authored prose is localized.  No command-shaped text is introduced.
+_STATIC_LINES_AR: dict[str, list[str]] = {
+    "G_EXPLAIN_ONLY": [
+        _LABEL_AR + " (explain_only): يشرح هذا الرد الأدلة المسجلة "
+        "وعدم اليقين المتبقي فيها؛ ولا يقترح أي إجراء.",
+        "أي تغيير في نظامك يظل تمامًا قرارك المستقل.",
+    ],
+    "G_REVIEW_CONTAINER_SOT": [
+        _LABEL_AR + " (مراجعة مصدر الحقيقة للحاوية): حدد ما الذي ينشئ "
+        "هذه الحاوية حاليًا قبل النظر في أي إعادة إنشاء. الحقائق "
+        "المقيدة خلفيًا: {container_facts}",
+        "1. تحقق من ملفات تعريف Quadlet التي تنشئ الحاوية "
+        "(المسار على مستوى النظام وما يقابله لكل مستخدم).",
+        "2. تحقق من وحدات systemd التي يعمل تعريف خدمتها على تشغيل "
+        "وقت تشغيل الحاوية مباشرة.",
+        "3. تحقق من ملفات تعريف على نمط compose في مواقع المشروع "
+        "المعتادة.",
+        "4. إذا لم يُعثر على أي منها، فلم يُحدد مصدر إنشاء للحاوية "
+        "في المواقع المفحوصة — مصدر حقيقة الحاوية يظل مجهولًا. لا "
+        "تفترض بدءًا يدويًا، ولا توصي بإعادة الإنشاء بناءً على هذا "
+        "الغياب وحده.",
+        "تبقى هوية عملية عبء العمل المسجلة مستقلة وغير موثقة؛ "
+        "تبقى المراجعة ضمن نطاق الحاوية.",
+    ],
+    "G_REVIEW_UNIT_STATE": [
+        _LABEL_AR + " (مراجعة الوحدة ضمن مديرها): راجع الحالة الحالية "
+        "لـ {unit_facts} ضمن مديرها المسجل نفسه.",
+        "سجل journal في زمن الحدث هو دليل المشغل؛ وفحص الحالة الحالية "
+        "يصف الآن فقط، وليس الحدث أبدًا.",
+        "لا تُقترح أي تغيير في الخدمة أو التحكم بها ضمن المراجعة؛ "
+        "لا يغير هذا الإرشاد حالة النظام، والوحدة ضمن نطاق المستخدم "
+        "لا تقبل أبدًا أفعال مدير النظام.",
+    ],
+    "G_SOFTWARE_UPDATE_REVIEW": [
+        _LABEL_AR + " (مراجعة تحديث البرنامج، {update_scope}): راجع مسار "
+        "التحديث ذا الصلة يدويًا، كقرار مستقل منك — لا يحمل هذا القالب "
+        "أي سلاسل أوامر.",
+        "تبقى هوية عملية عبء العمل المسجلة (إن وجدت) مستقلة وغير "
+        "موثقة.",
+    ],
+}
+
+_UPDATE_SCOPES = ("container-scoped", "host-package scoped", "generic")
+_UPDATE_SCOPES_AR = (
+    "ضمن نطاق الحاوية",
+    "ضمن نطاق حزم المضيف",
+    "عام",
+)
+
+
+def _is_arabic(language: str | None) -> bool:
+    """True only for an explicit Arabic request; everything else stays English."""
+    if not isinstance(language, str) or not language.strip():
+        return False
+    lowered = language.lower()
+    if "arabic" in lowered or "العربية" in language:
+        return True
+    for token in lowered.replace("-", " ").replace("_", " ").split():
+        if token in {"ar", "ara", "ar-ar", "ar_sa", "ar-sa"}:
+            return True
+    return False
+
+
+def _lines_for(code: str, language: str | None) -> list[str]:
+    if _is_arabic(language):
+        lines = _STATIC_LINES_AR.get(code)
+        if lines is not None:
+            return lines
+    lines = _STATIC_LINES.get(code)
+    if lines is None:
+        raise KeyError(code)
+    return lines
+
 # Backend-recorded FACT tokens never gate the safety scan (facts may
 # legitimately contain a substring like a versioned image name); the scan
 # guards the authored skeleton only.
@@ -204,8 +282,6 @@ _SKELETON_RE = re.compile(
     "|".join(re.escape(token) for token in _FORBIDDEN_SKELETON_TOKENS)
 )
 
-_UPDATE_SCOPES = ("container-scoped", "host-package scoped", "generic")
-
 
 def is_registered(code: str) -> bool:
     return isinstance(code, str) and code in _STATIC_LINES
@@ -225,10 +301,8 @@ def requirements(code: str) -> tuple[str | None, Callable[..., list[str]]]:
     raise KeyError(code)
 
 
-def _skeleton(code: str) -> list[str]:
-    lines = _STATIC_LINES.get(code)
-    if lines is None:
-        raise KeyError(code)
+def _skeleton(code: str, language: str | None = None) -> list[str]:
+    lines = _lines_for(code, language)
     for line in lines:
         hit = _SKELETON_RE.search(line.lower())
         if hit:
@@ -246,13 +320,20 @@ def render(
     record: dict[str, Any] | None,
     incident: dict,
     registry: Any,
+    language: str | None = None,
 ) -> dict[str, Any]:
     """Render one guidance payload (§11.1): the authored skeleton is scanned
     for command-shaped tokens, then backend-recorded facts fill the declared
     placeholders. Model text never enters — placeholders consume only
     backend records (opaque ref, name/image/scope facts the incident already
-    carries and redaction already scrubbed)."""
-    lines = _skeleton(code)
+    carries and redaction already scrubbed).
+
+    *language* selects the deterministic backend text only (Arabic when an
+    Arabic preference is supplied, English otherwise).  It never changes
+    the guidance decision, target binding or evidence gates.
+    """
+    lines = _skeleton(code, language)
+    arabic = _is_arabic(language)
     facts: dict[str, str] = {}
     if code == "G_REVIEW_CONTAINER_SOT":
         facts["container_facts"] = (
@@ -260,14 +341,19 @@ def render(
         )
         if facts["container_facts"]:
             facts["container_facts"] = " (" + facts["container_facts"] + ")"
+        elif arabic:
+            facts["container_facts"] = " (مرجع حاوية خلفي مُوثَّق)"
         else:
             facts["container_facts"] = " (backend-bound container reference on file)"
     elif code == "G_REVIEW_UNIT_STATE":
-        facts["unit_facts"] = (
-            _unit_facts(record) if isinstance(record, dict) else "the recorded unit"
-        )
+        if isinstance(record, dict):
+            facts["unit_facts"] = _unit_facts(record)
+        elif arabic:
+            facts["unit_facts"] = "الوحدة المسجلة"
+        else:
+            facts["unit_facts"] = "the recorded unit"
     elif code == "G_SOFTWARE_UPDATE_REVIEW":
-        facts["update_scope"] = _update_scope_from_claims(incident, registry)
+        facts["update_scope"] = _update_scope_from_claims(incident, registry, language)
     try:
         filled = [line.format(**facts) for line in lines]
     except (KeyError, IndexError) as exc:  # a template's brace/placeholder bug
@@ -282,14 +368,23 @@ def render(
     }
 
 
-def _update_scope_from_claims(incident: dict, registry: Any) -> str:
+def _update_scope_from_claims(
+    incident: dict,
+    registry: Any,
+    language: str | None = None,
+) -> str:
     """Deterministic scope routing for the null-bound update-review template:
-    from RESOLVED backend claims only (§11.2 rows), never from model text."""
+    from RESOLVED backend claims only (§11.2 rows), never from model text.
+
+    *language* selects the backend-authored scope label only; the routing
+    decision itself is identical in every language.
+    """
+    scopes = _UPDATE_SCOPES_AR if _is_arabic(language) else _UPDATE_SCOPES
     for entry in registry.refs.values():
         status = entry.get("status") if "status" in entry else entry.get("outcome")
         if status in ("VERIFIED", "CURRENT_RUNTIME_VERIFIED", "EVENT_TIME_ATTESTED"):
             if entry.get("kind") == "container":
-                return _UPDATE_SCOPES[0]
+                return scopes[0]
             if entry.get("kind") == "unit":
-                return _UPDATE_SCOPES[1]
-    return _UPDATE_SCOPES[2]
+                return scopes[1]
+    return scopes[2]

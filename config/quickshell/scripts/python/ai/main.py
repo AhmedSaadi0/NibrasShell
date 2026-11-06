@@ -8,6 +8,12 @@ from typing import Any, Dict, List, Optional, Union
 import prompt
 
 from config import PRESETS, get_provider, structured_evidence_enabled
+from credential_transport import (
+    CredentialTransportError,
+    read_credential,
+    redact_secret,
+    redact_structure,
+)
 
 try:
     from json_repair import repair_json
@@ -87,6 +93,22 @@ def get_fallback_response(language: str = "en") -> Dict[str, Any]:
     return {"reply": msg, "apply": False, "changes": [], "warnings": []}
 
 
+def _emit_failure(error_code: str) -> None:
+    """Print a safe failure envelope without echoing any credential material."""
+    print(
+        json.dumps(
+            {
+                "success": False,
+                "response": None,
+                "updated_history": [],
+                "error": error_code,
+                "orchestrator": None,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
 def _phase6_audit_logger():
     """Opt-in production audit logger (Phase 6, §14).
 
@@ -154,6 +176,7 @@ def _run_orchestrator_v2(args) -> None:
         "orchestrator": None,
     }
     audit = _phase6_audit_logger()
+    secret = getattr(args, "api_key", None)
     try:
         from agent import prompt_agent as agent_prompts
         from agent import tools as agent_tools
@@ -235,7 +258,7 @@ def _run_orchestrator_v2(args) -> None:
                 "NO_INCIDENTS_COLLECTED",
                 reason_codes=["NO_INCIDENTS_COLLECTED"],
             )
-            print(json.dumps(output, ensure_ascii=False))
+            print(json.dumps(redact_structure(output, secret), ensure_ascii=False))
             return
 
         incident = valid[0]
@@ -244,6 +267,7 @@ def _run_orchestrator_v2(args) -> None:
             model_call,
             agent_tools.OsToolCommandRunner(),
             audit_logger=audit,
+            preferred_language=args.preferred_language,
         )
         for key in ("success", "response", "updated_history", "error"):
             output[key] = envelope.get(key, output[key])
@@ -285,7 +309,9 @@ def _run_orchestrator_v2(args) -> None:
             },
         )
     except Exception as exc:  # noqa: BLE001 — the envelope never crashes out
-        output["error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
+        output["error"] = redact_secret(
+            f"{type(exc).__name__}: {str(exc)[:300]}", secret
+        )
         output["response"] = {
             "analysis_failure": "ORCHESTRATOR_UNAVAILABLE",
             "no_action_taken": True,
@@ -296,7 +322,7 @@ def _run_orchestrator_v2(args) -> None:
             "ORCHESTRATOR_UNAVAILABLE",
             reason_codes=["ORCHESTRATOR_UNAVAILABLE"],
         )
-    print(json.dumps(output, ensure_ascii=False))
+    print(json.dumps(redact_structure(output, secret), ensure_ascii=False))
 
 
 def main() -> None:
@@ -304,7 +330,17 @@ def main() -> None:
     parser.add_argument("--message", default=None)
     parser.add_argument("--message_key", default=None)
     parser.add_argument("--message_vars", default="{}")
-    parser.add_argument("--api_key")
+    # Phase 5.3: the credential is read from one bounded JSON line on stdin.
+    # Legacy callers that still pass --api_key are rejected without echoing
+    # the supplied value and without using it.
+    parser.add_argument(
+        "--credential-stdin",
+        action="store_true",
+        help="Read the API credential from one bounded JSON line on stdin",
+    )
+    parser.add_argument(
+        "--api_key", dest="_argv_api_key", default=None, help=argparse.SUPPRESS
+    )
     parser.add_argument("--model")
     parser.add_argument("--preset", choices=PRESETS.keys(), default=None)
     parser.add_argument("--base_url", default=None)
@@ -337,6 +373,22 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    if args._argv_api_key is not None:
+        # Do not use or echo a credential supplied through argv.
+        _emit_failure("CREDENTIAL_TRANSPORT_ERROR:ARGV_FORBIDDEN")
+        return
+
+    if args.credential_stdin:
+        try:
+            args.api_key = read_credential()
+        except CredentialTransportError as exc:
+            _emit_failure(str(exc))
+            return
+    else:
+        # Empty is valid for providers that do not require a credential;
+        # authenticated providers raise a typed configuration error later.
+        args.api_key = None
 
     if args.orchestrator is not None:  # Phase 3 (§18): bounded orchestrator
         _run_orchestrator_v2(args)
@@ -422,14 +474,19 @@ def main() -> None:
         output["updated_history"] = updated_history
 
     except Exception as e:
-        output["error"] = str(e)
+        output["error"] = redact_secret(str(e), getattr(args, "api_key", None))
         if args.json_mode:
             output["response"] = get_fallback_response(args.preferred_language)
         # الحفاظ على التاريخ القديم في حال حدوث خطأ
         output["updated_history"] = history
 
     # ensure_ascii=False يضمن ظهور الحروف العربية بشكل صحيح في الطرفية والملفات
-    print(json.dumps(output, ensure_ascii=False))
+    print(
+        json.dumps(
+            redact_structure(output, getattr(args, "api_key", None)),
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":

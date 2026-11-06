@@ -15,6 +15,14 @@ QtObject {
     id: task
 
     property var command: []
+    // Phase 5.3: credential transport. The value is written once to the
+    // child's stdin and never appears in argv or the process environment.
+    property string credential: ""
+    // Optional extra environment variables for this child only.  Quickshell's
+    // Process merges these with the inherited parent environment, so the
+    // diagnostics process can receive NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1
+    // without changing the environment of any other AI workflow.
+    property var environment: ({})
     property int watchdogMs: 310000
     property int terminationGraceMs: 1000
 
@@ -95,11 +103,21 @@ QtObject {
         _timedOut = false;
         _settled = false;
         aiProcess.command = task.command;
+        if (task.environment && Object.keys(task.environment).length > 0)
+            aiProcess.environment = task.environment;
         aiProcess.running = true;
         watchdogTimer.restart();
     }
 
     property Process aiProcess: Process {
+        stdinEnabled: true
+
+        onStarted: {
+            if (task._settled || task._timedOut)
+                return;
+            aiProcess.write(JSON.stringify({ credential: task.credential || "" }) + "\n");
+        }
+
         stdout: StdioCollector {
             onStreamFinished: {
                 if (task._timedOut || task._settled)

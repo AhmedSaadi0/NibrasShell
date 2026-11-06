@@ -219,4 +219,72 @@ model output → parse_contract_json → contract.validate_diagnosis
 
 **بوابة المعايرة تبقى منفصلة و`BLOCKED`** حتى تتوفر معايرة المزوّد/النموذج الفعلي؛ عدم وجود endpoint محلي ليس فشل تكامل.
 
+---
+
+## 13. تفعيل V2 في واجهة Quickshell (Phase 5.2)
+
+**النطاق:** تفعيل مسار V2 المُنجَز عبر واجهة الإقلاع فقط، دون تغيير أي مسار AI آخر.
+
+- `config/App.qml`: `callBootSolutionAi` فقط يحمل `--orchestrator v2`. يبقى `callBootAnalysisAi` (ملخص الإقلاع) وبقية أوامر AI على V1.
+- `services/system/BootAnalyzer.qml`: `requestBootSolutions` يمرر `NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1` ضمن `environment` الخاص بالطلب.
+- `services/AiService.qml`: يمرر `options.environment` إلى نسخة `AiTask` الخاصة بالطلب.
+- `services/AiTask.qml`: يضبط `aiProcess.environment` قبل `running = true`؛ Quickshell يدمج هذه القيم مع بيئة الأب، والتبديل محصور بعملية تشخيص الإقلاع هذه فقط.
+- لا يُفرض مزوّد محلي: يبقى `--provider aiProvider` و`--model root.systemAiModel` و`--user_persona` كما كانت، أمّا السر فيُمرَّر عبر stdin (انظر §14) ولا يظهر في argv.
+- عند تعذّر جمع الشواهد المهيكلة يعيد V2 `NO_INCIDENTS_COLLECTED` مع `no_action_taken: true`؛ لا رجوع صامت إلى V1.
+
+### 13.1 Manual runtime checklist (Phase 5.2)
+
+1. أعد تشغيل/إعادة تحميل Quickshell بعد التعديلات.
+2. افتح تفاصيل الإقلاع وشغّل تحليل الإقلاع ثم حلول الإقلاع من الواجهة.
+3. تحقق من سطر عملية Python في `ps`/سجل التشغيل أنه يتضمن `--orchestrator v2` لطلب `callBootSolutionAi` فقط.
+4. تحقق من أن عملية التشخيص تلقت `NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE=1` (مثلاً بفحص `/proc/<pid>/environ` أثناء التشغيل أو سجل تشخيصي مؤقت لا يطبع أسراراً).
+5. تحقق من أن المزوّد والنموذج المختارين في الإعدادات هما المستخدمان فعلاً، وأنه لا اتصال بمزوّد محلي غير مُعدّ.
+6. تحقق من أن الرد يحتوي `response.response.validation.guidance_decision` وأن الحالة كما أصدرها الخادم.
+7. تحقق من أن `GUIDANCE_VALIDATED` يعرض `guidance_template.lines` الخلفية، وأن نص النموذج يبقى موسوماً كتحليل.
+8. تحقق من أن `POLICY_REJECTED` لا يعرض قالب إرشاد ولا يفعّل النسخ، وأن `ANALYSIS_UNVERIFIED` و`STATUS_ABSENT` غير قابلين للنسخ.
+9. افصل الشبكة أو أوقف المزوّد: يجب أن يظهر فشل آمن (`MODEL_TIMEOUT`/`PROVIDER_ERROR`) مع `no_action_taken`، لا تشخيص ناجح وهمي.
+10. راقب النظام أثناء التشغيل: لا أوامر تغيير حالة، ولا تنفيذ تلقائي، ولا نسخ لأوامر V1 القديمة.
+
+**لا يُعتبر هذا الاختبار منجزاً إلا داخل جلسة Quickshell حقيقية.** الاختبارات الآلية في `test_phase3_orchestrator.py` و`test_phase5_qml_adapters.py` و`test_phase6_release_hardening.py` تثبت عقد المصدر ومسار البيانات، ولا تدّعي تشغيل QML فعلياً.
+
+---
+
+## 14. نقل بيانات الاعتماد عبر stdin (Phase 5.3)
+
+**المشكلة السابقة:** كانت أوامر QML تمرّر `--api_key <secret>` إلى `main.py` و`list-gemini.py` (وكذلك `AIChatView.qml` المهجور)، ما يجعل السر مرئياً في `/proc/<pid>/cmdline` أو أي أداة تعرض argv العملية.
+
+**المسار الجديد:**
+
+```text
+App.qml credential property → AiService options.credential
+  → AiTask.credential (in memory)
+  → Process.stdinEnabled = true
+  → started: write({"credential":"..."}\n)
+  → main.py --credential-stdin: read_credential() قبل تهيئة المزوّد
+```
+
+- كل أوامر AI تحمل الآن `--credential-stdin` بدلاً من `--api_key`؛ الأسرار لا تُضاف إلى argv.
+- `AiService` يمرّر `options.credential` إلى `AiTask`؛ لا يُضاف إلى `fullCmd`.
+- `AiTask` يفعّل stdin ويكتب سطر JSON واحداً بعد `started`؛ لا يُسجَّل السطر ولا يُطبع.
+- `credential_transport.read_credential()` يقرأ سطراً واحداً بحد أقصى 16 KiB، ويرفض EOF/JSON غير صالح/حقولاً زائدة/أنواعاً غير نصية/أسطراً متعددة بأكواد `CREDENTIAL_TRANSPORT_ERROR:*` دون طباعة القيمة.
+- `main.py` يقرأ السر قبل `get_provider()` في V1 وV2. المزوّدون الذين يتطلبون مفتاحاً (`gemini`, `openai`, `openrouter`, `deepseek`) يفشلون بنوعية `ProviderConfigurationError: MISSING_API_CREDENTIAL` عند غيابه؛ `local` و`ollama` يعملان دون مفتاح.
+- `--api_key` القديم مُخفى في argparse ويُرفض فوراً بـ `CREDENTIAL_TRANSPORT_ERROR:ARGV_FORBIDDEN` دون استخدامه أو طباعة قيمته.
+- أي استثناء مزوّد يمرّ عبر تنقية `redact_secret`/`redact_structure` قبل طباعة المظروف؛ لا يظهر السر في stdout/stderr أو الحقول المسجلة.
+
+**حدود الأمان:** يمنع هذا النقل ظهور السر في argv وبيئة العملية. يبقى السر في ذاكرة QML وفي ذاكرة عملية Python/عامل النموذج بالمقدار اللازم للمصادقة؛ ولا يحمي من مفتش مميز (root/ptrace) أو من قراءة الذاكرة. التخزين على القرص في `~/.nibrasshell.json` سلوك سابق خارج نطاق هذه المرحلة. تحقق الاختبارات من `/proc/<pid>/cmdline` و`/proc/<pid>/environ` فقط، ولا تدّعي سرية الذاكرة.
+
+**التغطية:** `scripts/python/tests/test_phase5_3_credential_transport.py` (19 اختباراً) يغطي غياب `--api_key` من QML، تمرير الاعتماد لكل موقع استدعاء، كتابة stdin، وصول القيمة إلى تهيئة المزوّد V1/V2، الفشل الآمن، تنقية الأخطاء، استمرار المزوّدين بلا مفتاح، والحفاظ على اختيار المزوّد/النموذج، وفحص subprocess لـ `/proc/<pid>/cmdline` و`/proc/<pid>/environ`.
+
+### 14.1 Manual runtime check (Phase 5.3)
+
+1. أعد تحميل/تشغيل Quickshell.
+2. شغّل أي إجراء AI من الواجهة (حلول الإقلاع، الطقس، الموسيقى، المهام).
+3. أثناء تشغيل عملية Python، افحص `tr '\0' ' ' </proc/<pid>/cmdline`: يجب أن يظهر `--credential-stdin` وألا يظهر `--api_key` أو أي سر.
+4. افحص `/proc/<pid>/environ`: لا يجب أن يكون مفتاح AI مضافاً من هذه المرحلة.
+5. تحقق من أن النتيجة والسلوك الوظيفي لم يتغيرا مع المزوّد/النموذج المُعدّين.
+6. تحقق من أن غياب الاعتماد أو فساده يعطي فشلاً نوعياً محايداً، لا تشخيصاً ناجحاً وهمياً.
+
+**لم تُنفَّذ هذه الخطوة في جلسة Quickshell حقيقية ضمن هذه المرحلة؛** الاختبارات أعلاه مصدرية/وحداتية باستثناء فحص `/proc` لعملية Python مستقلة.
+
+
 

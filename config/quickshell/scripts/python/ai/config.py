@@ -78,6 +78,15 @@ PRESETS = {
 MAX_ENVELOPE_BYTES = 512 * 1024
 
 
+class ProviderConfigurationError(ValueError):
+    """Typed provider configuration failure (never carries credential data)."""
+
+
+# Providers that cannot operate without an API credential.  Local and Ollama
+# are intentionally excluded: both support credential-free deployments.
+_AUTH_REQUIRED_PROVIDERS = {"gemini", "openai", "openrouter", "deepseek"}
+
+
 def structured_evidence_enabled() -> bool:
     """المرحلة 2 (§18): مفتاح تجميع الشواهد المهيكلة — default-deny.
 
@@ -305,6 +314,13 @@ def get_provider(
     for key, value in replacements.items():
         if key in final_system_instruction:
             final_system_instruction = final_system_instruction.replace(key, str(value))
+
+    # Phase 5.3: fail closed with a typed, secret-free error before a provider
+    # modal can produce an ambiguous SDK error.  No-key deployments (local /
+    # Ollama) continue to work unchanged.
+    provider_name = args.provider or "openai"
+    if provider_name in _AUTH_REQUIRED_PROVIDERS and not args.api_key:
+        raise ProviderConfigurationError("MISSING_API_CREDENTIAL")
 
     common_args = {
         "api_key": args.api_key,
