@@ -1,0 +1,26 @@
+{
+  "success": true,
+  "response": {
+    "solutions": [
+      {
+        "id": "fi-0002",
+        "related_log": "0",
+        "title": "اقتراح قديم بلا تصنيف (fixture)",
+        "description": "وصف اصطناعي لحل قديم لا يحمل difficulty أو priority — يثبت أن الواجهة تعرض UNLABELED ولا تفترض easy/optional.",
+        "why_this_works": "تعليل اصطناعي (fixture) — لا يُطبَّق على أي نظام.",
+        "steps": [
+          {
+            "label": "خطوة اصطناعية معزولة",
+            "command": "systemctl --user status app-synthetic-unlabeled.service",
+            "warning": null
+          }
+        ]
+      }
+    ]
+  },
+  "updated_history": [
+    { "role": "user", "content": "synthetic unlabeled boot solution request (fixture)" },
+    { "role": "assistant", "content": "synthetic unlabeled boot solution response (fixture)" }
+  ],
+  "error": null
+}

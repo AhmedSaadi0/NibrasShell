@@ -79,7 +79,7 @@ QtObject {
         }, function (errorMessage) {
             console.error("[ActionResponses] Failed to load system action responses:", errorMessage);
             root.systemActionResponsesReady = true;
-        }, "SystemActions", 0);
+        }, "SystemActions", 0, { credential: App.systemAiCredential });
     }
 
     function retrySystemActionMessages() {

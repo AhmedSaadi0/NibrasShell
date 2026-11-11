@@ -166,6 +166,19 @@ Item {
                         aiProcessBehavior: model.aiProcessBehavior
                         aiActions: model.aiActions
 
+                        // [Phase 5 — additive adapter fields | §13]
+                        aiAdapterStatus: model.aiAdapterStatus || "ANALYSIS_UNVERIFIED"
+                        aiVerificationStatus: model.aiVerificationStatus || ""
+                        aiVerificationReasons: model.aiVerificationReasons || []
+                        aiVerificationScope: model.aiVerificationScope || ""
+                        aiRuntimeDomain: model.aiRuntimeDomain || ""
+                        aiEventTransport: model.aiEventTransport || ""
+                        aiIdentityLimits: model.aiIdentityLimits || []
+                        aiUncertainties: model.aiUncertainties || []
+                        aiMissingEvidence: model.aiMissingEvidence || []
+                        aiEvidence: model.aiEvidence || []
+                        aiValidationReasons: model.aiValidationReasons || []
+
                         isExpanded: root.expandedEventId === model.eventId
 
                         onExpandRequested: {

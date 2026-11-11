@@ -167,7 +167,7 @@ QtObject {
                 causes: [],
                 actions: []
             });
-        }, "spike_analyze_" + eventId, 2);
+        }, "spike_analyze_" + eventId, 2, { credential: App.systemAiCredential });
     }
 
     function _safePrettyJson(value) {

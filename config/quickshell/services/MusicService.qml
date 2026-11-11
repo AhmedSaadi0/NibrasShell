@@ -175,7 +175,7 @@ Singleton {
             }
         }, function (errorMessage) {
             console.error("[MusicService] AI Failed via Gateway: " + errorMessage);
-        }, "MusicService", 2);
+        }, "MusicService", 2, { credential: App.musicAiCredential });
     }
 
     // ============================================================

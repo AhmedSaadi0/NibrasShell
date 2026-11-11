@@ -1,0 +1,33 @@
+{
+  "success": true,
+  "response": {
+    "solutions": [
+      {
+        "id": "fi-0001",
+        "related_log": "0",
+        "title": "إصلاح اصطناعي: خدمة مستخدم مُعطَّلة (fixture)",
+        "difficulty": "medium",
+        "priority": "important",
+        "description": "وصف اصطناعي — هذه المُثبّتة تجمد شكل الحل القديم كما تستهلكه SolutionCard/CommandBox، وليست توصية فعلية.",
+        "why_this_works": "تعليل اصطناعي (fixture) — لا يُطبَّق على أي نظام.",
+        "steps": [
+          {
+            "label": "خطوة اصطناعية: فحص الحالة",
+            "command": "systemctl --user status app-synthetic-000.service",
+            "warning": null
+          },
+          {
+            "label": "خطوة اصطناعية: إعادة التشغيل",
+            "command": "systemctl --user restart app-synthetic-000.service",
+            "warning": "قد يُقاطِع جلسة المستخدم (fixture)"
+          }
+        ]
+      }
+    ]
+  },
+  "updated_history": [
+    { "role": "user", "content": "synthetic boot solution request (fixture)" },
+    { "role": "assistant", "content": "synthetic boot solution response (fixture)" }
+  ],
+  "error": null
+}

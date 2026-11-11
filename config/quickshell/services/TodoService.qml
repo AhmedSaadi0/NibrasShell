@@ -289,7 +289,7 @@ Singleton {
             }
         }, function (errorMessage) {
             console.error("[TodoService] AI Failed: " + errorMessage);
-        }, "TodoService", 0);
+        }, "TodoService", 0, { credential: App.systemAiCredential });
     }
 
     function _buildAiPayload() {

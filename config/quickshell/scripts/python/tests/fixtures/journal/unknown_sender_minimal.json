@@ -1,0 +1,11 @@
+{
+  "_TRANSPORT": "kernel",
+  "PRIORITY": "4",
+  "__CURSOR": "s+b0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0:0000000071",
+  "__REALTIME_TIMESTAMP": "1733200015000000",
+  "__MONOTONIC_TIMESTAMP": "2915000000",
+  "_BOOT_ID": "b0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0",
+  "_MACHINE_ID": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "_HOSTNAME": "synthetic-host",
+  "MESSAGE": "synthetic kernel-flavored record without sender credentialed fields (fixture)"
+}

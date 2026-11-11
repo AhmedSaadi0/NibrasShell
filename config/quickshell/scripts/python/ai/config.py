@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import platform
 import subprocess
@@ -70,6 +71,137 @@ PRESETS = {
         "temperature": 0.2,
     },
 }
+
+
+# R1 payload bound for one structured-collection envelope (plan §10.3:
+# records ≤ 200 / per-message ≤ 2000 / envelope ≤ 512 KiB)
+MAX_ENVELOPE_BYTES = 512 * 1024
+
+
+class ProviderConfigurationError(ValueError):
+    """Typed provider configuration failure (never carries credential data)."""
+
+
+# Providers that cannot operate without an API credential.  Local and Ollama
+# are intentionally excluded: both support credential-free deployments.
+_AUTH_REQUIRED_PROVIDERS = {"gemini", "openai", "openrouter", "deepseek"}
+
+
+def structured_evidence_enabled() -> bool:
+    """المرحلة 2 (§18): مفتاح تجميع الشواهد المهيكلة — default-deny.
+
+    يعمل المسار القديم ``{SYSTEM_LOGS}`` كما هو دائمًا؛ هذا المفتاح يسمح فقط
+    **بتجميع** الحوادث المهيكلة (``nibras.incident/v1``) عبر ``get_boot_incident``.
+    القيمة الافتراضية ``0`` ⇒ لا يُقرأ journalctl ولا podman/systemctl إطلاقًا.
+    """
+    return os.environ.get(
+        "NIBRAS_SHELL_AI_STRUCTURED_EVIDENCE", "0"
+    ).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def get_boot_incident(runner=None, limit=200):
+    """تجميع حوادث الإقلاع المهيكلة (nibras.incident/v1) — المرحلة 2.
+
+    يعيد ``None`` عندما يكون المفتاح مطفأً (لا يتحسّس النظام إطلاقًا ولا يمسّ
+    المسار القديم). الاستيرادات الكسولة المُحاطة بـ try/except تفشل بهدوء
+    مُغلَق (fail-closed) ولا تكسر مسار ``{SYSTEM_LOGS}`` القديم مهما حدث.
+
+    الشكل المُعاد (تجميع داخلي غير مُعاقَد — العقد المُعاقَد هو
+    nibras.incident/v1 لكل سجل): ``{"collection": {...}, "incidents": [...≤200]}``.
+    كل حادثة تحمل شواهدها وحالة تنقيتها وغياباتها بنفسها (§9)، ولقطة الاستبيان
+    المشتركة (survey snapshot) تُبنى مرة واحدة وتُضمَّن في كل حادثة.
+    """
+    if not structured_evidence_enabled():
+        return None
+    try:
+        from evidence import journal_collector as _jc
+        from evidence.discovery import discover as _discover, OsRunner as _OsRunner
+        from incident import normalizer as _nz
+    except Exception as exc:  # noqa: BLE001 — fail-closed, never break legacy
+        return {
+            "collection": {
+                "collection_failed": True,
+                "failure_reasons": ["RUNTIME_UNAVAILABLE"],
+                "notes": [
+                    f"structured evidence layer unavailable: {type(exc).__name__}"
+                ],
+            },
+            "incidents": [],
+        }
+
+    active_runner = runner if runner is not None else _OsRunner()
+    collection = _jc.collect(active_runner, limit=limit)
+    try:
+        survey_snapshot = _nz.build_survey_snapshot(active_runner)
+    except Exception as exc:  # noqa: BLE001 — survey degrades fail-closed too
+        survey_snapshot = {
+            "state": "ABSENT",
+            "note": f"survey snapshot build failed: {type(exc).__name__}",
+        }
+
+    incidents = []
+    payload_bytes = 0
+    payload_capped = False
+    for seq, record in enumerate(collection.records, start=1):
+        try:
+            discovery_result = _discover(record, active_runner)
+            incident = _nz.build_incident(
+                record,
+                discovery_result,
+                survey_snapshot=survey_snapshot,
+                current_boot_id=collection.current_boot_id,
+                container_seq=seq,
+            )
+        except Exception as exc:  # noqa: BLE001 — one bad record never halts
+            incidents.append(
+                {
+                    "schema_version": _nz.SCHEMA_VERSION,
+                    "collection_note": (
+                        "INCIDENT_BUILD_FAILED: "
+                        f"{type(exc).__name__} — record skipped honestly"
+                    ),
+                    "record_index": seq,
+                }
+            )
+            continue
+        # R1 payload bound (§10.3): stop ADDING when the envelope exceeds the
+        # 512 KiB cap; the reached-cap state is recorded, never silently cut
+        candidate_size = len(json.dumps(incident, default=str).encode("utf-8"))
+        if payload_bytes + candidate_size > MAX_ENVELOPE_BYTES:
+            payload_capped = True
+            break
+        incidents.append(incident)
+        payload_bytes += candidate_size
+
+    if payload_capped:
+        collection_notes = list(collection.notes) if collection.notes else []
+        collection_notes.append(
+            f"PAYLOAD_CAP_REACHED: envelope stopped at {payload_bytes} bytes "
+            f"of {len(collection.records)} collected records"
+        )
+    else:
+        collection_notes = list(collection.notes)
+
+    return {
+        "collection": {
+            "argv_used": collection.argv_used,
+            "counters": collection.counters,
+            "notes": collection_notes,
+            "failure_reasons": collection.failure_reasons,
+            "current_boot_id": collection.current_boot_id,
+            "same_boot_as_cursor_group": collection.same_boot_as_cursor_group,
+            "used_fallback": collection.used_fallback,
+            "output_truncated": collection.output_truncated,
+            "collection_failed": collection.collection_failed,
+            "last_cursor": collection.last_cursor,
+        },
+        "incidents": incidents,
+    }
 
 
 def get_raw_boot_logs():
@@ -182,6 +314,13 @@ def get_provider(
     for key, value in replacements.items():
         if key in final_system_instruction:
             final_system_instruction = final_system_instruction.replace(key, str(value))
+
+    # Phase 5.3: fail closed with a typed, secret-free error before a provider
+    # modal can produce an ambiguous SDK error.  No-key deployments (local /
+    # Ollama) continue to work unchanged.
+    provider_name = args.provider or "openai"
+    if provider_name in _AUTH_REQUIRED_PROVIDERS and not args.api_key:
+        raise ProviderConfigurationError("MISSING_API_CREDENTIAL")
 
     common_args = {
         "api_key": args.api_key,

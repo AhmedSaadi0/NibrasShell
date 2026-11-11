@@ -273,6 +273,8 @@ Singleton {
                     refreshTimer.interval = 15 * 60 * 1000;
                     refreshTimer.restart();
                 }, "WeatherService", 1, {
+                    // Phase 5.3: credential is transported over stdin, not argv.
+                    credential: App.weatherAiCredential,
                     // ذاكرة المحادثة: نُرسل التحليلات السابقة لتفادي فقدان السياق
                     history: JSON.stringify(root._aiHistory),
                     historyCap: App.weatherAiHistoryTurns,
