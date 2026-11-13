@@ -1,4 +1,6 @@
 # modules/dependencies.py
+import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -13,6 +15,13 @@ from .utils import (
     run_command_verbose,
 )
 
+# الصلاحيات التي يحتاجها nethogs لقراءة استهلاك الشبكة لكل عملية
+NETHOGS_CAPS = "cap_net_admin,cap_net_raw,cap_dac_read_search,cap_sys_ptrace+eip"
+
+# مسار خدمة vnstat في Void (runit) - ينشئها حزمة vnstat عبر vsv vnstatd
+VOID_VNSTAT_SVC_DIR = "/etc/sv/vnstatd"
+VOID_VNSTAT_RUNSVDIR = "/etc/runit/runsvdir/default/vnstatd"
+
 
 def install_fedora(install_optional):
     print(YELLOW + "Enabling RPM Fusion and COPR repositories..." + NC)
@@ -24,7 +33,7 @@ def install_fedora(install_optional):
     run_command_verbose("sudo dnf copr enable -y errornointernet/quickshell")
     run_command_verbose("sudo dnf install -y hyprland quickshell")
 
-    required_pkgs = "plasma-nm playerctl polkit-kde dolphin konsole brightnessctl gammastep wl-clipboard cliphist sysstat bc glib2-devel dbus-glib-devel plasma-systemsettings acpi fish gnome-bluetooth-libs lm_sensors vnstat nethogs jq dbus-devel python3-devel python3.13 python3.13-devel"
+    required_pkgs = "plasma-nm playerctl polkit-kde dolphin konsole brightnessctl gammastep wl-clipboard cliphist sysstat bc glib2-devel dbus-glib-devel plasma-systemsettings acpi fish gnome-bluetooth-libs lm_sensors libcap vnstat nethogs jq dbus-devel python3-devel python3.13 python3.13-devel"
     optional_pkgs = (
         "strawberry easyeffects blueman telegram-desktop discord kvantum firefox"
     )
@@ -72,7 +81,7 @@ def install_fedora(install_optional):
 
 def install_arch(install_optional):
     print(YELLOW + "Starting Arch installer" + NC)
-    required_pkgs = "base-devel quickshell brightnessctl network-manager-applet konsole ark dolphin ffmpegthumbs playerctl polkit-kde-agent jq gammastep wl-clipboard cliphist hyprpicker hyprshot-git bc sysstat sassc systemsettings acpi fish kde-material-you-colors plasma5support plasma5-integration plasma-framework5 ttf-jetbrains-mono-nerd ttf-fantasque-nerd powerdevil gnome-bluetooth-3.0 power-profiles-daemon libjpeg6-turbo python-regex python-pillow python-psutil python python313"
+    required_pkgs = "base-devel quickshell brightnessctl network-manager-applet konsole ark dolphin ffmpegthumbs playerctl polkit-kde-agent jq gammastep wl-clipboard cliphist hyprpicker hyprshot-git bc sysstat sassc systemsettings acpi fish kde-material-you-colors plasma5support plasma5-integration plasma-framework5 ttf-jetbrains-mono-nerd ttf-fantasque-nerd powerdevil gnome-bluetooth-3.0 power-profiles-daemon libjpeg6-turbo python-regex python-pillow python-psutil libcap vnstat nethogs python python313"
     optional_pkgs = (
         "strawberry easyeffects blueman telegram-desktop discord kvantum firefox"
     )
@@ -92,7 +101,7 @@ def install_void(install_optional):
     )
     run_command_verbose("sudo xbps-install -S")
 
-    required_pkgs = "hyprland quickshell plasma-nm playerctl polkit-kde-agent dolphin konsole brightnessctl gammastep wl-clipboard sysstat bc sassc systemsettings acpi fish-shell gnome-bluetooth power-profiles-daemon lm_sensors vnstat nethogs xz jq python3-devel dbus-devel glib-devel cmake nerd-fonts"
+    required_pkgs = "hyprland quickshell plasma-nm playerctl polkit-kde-agent dolphin konsole brightnessctl gammastep wl-clipboard sysstat bc sassc systemsettings acpi fish-shell gnome-bluetooth power-profiles-daemon lm_sensors libcap-progs vnstat nethogs xz jq python3-devel dbus-devel glib-devel cmake nerd-fonts"
     optional_pkgs = "strawberry easyeffects blueman telegram-desktop kvantum firefox"
 
     command = f"sudo xbps-install -y {required_pkgs}"
@@ -103,6 +112,65 @@ def install_void(install_optional):
     run_command_verbose(command)
     print(YELLOW + "Installing python needed packages using env pip..." + NC)
     install_python_env()
+
+
+def enable_vnstat_service(distro):
+    """تفعيل خدمة vnstat حسب نظام الإقلاع الخاص بالتوزيعة"""
+    print(f"{YELLOW}{msg('enabling_vnstat')}{NC}")
+
+    if distro == "void":
+        ok = enable_vnstat_service_runit()
+    else:
+        ok = run_command(
+            "sudo systemctl enable --now vnstat.service", exit_on_fail=False
+        )
+
+    if not ok:
+        print(f"{YELLOW}{msg('vnstat_service_failed')}{NC}")
+    return ok
+
+
+def enable_vnstat_service_runit():
+    """فود تستخدم runit: ربط مجلد الخدمة داخل runsvdir"""
+    if not os.path.isdir(VOID_VNSTAT_SVC_DIR):
+        print(f"{YELLOW}{msg('vnstat_service_dir_missing')}{NC}")
+        return False
+
+    ok = run_command(
+        f"sudo ln -sfn {VOID_VNSTAT_SVC_DIR} /var/service/vnstatd",
+        exit_on_fail=False,
+    )
+    if not ok:
+        # /var/service غير موجود عندما لا يعمل runit، نربط الخدمة في runsvdir
+        # الافتراضي حتى تبدأ تلقائياً عند الإقلاع التالي
+        ok = run_command(
+            f"sudo ln -sfn {VOID_VNSTAT_SVC_DIR} {VOID_VNSTAT_RUNSVDIR}",
+            exit_on_fail=False,
+        )
+    return ok
+
+
+def set_nethogs_caps():
+    """منح nethogs الصلاحيات اللازمة لقراءة استهلاك الشبكة لكل عملية"""
+    nethogs_path = shutil.which("nethogs")
+    if not nethogs_path:
+        print(f"{YELLOW}{msg('nethogs_not_found')}{NC}")
+        return False
+
+    print(f"{YELLOW}{msg('setting_nethogs_caps')}{NC}")
+    ok = run_command(
+        f"sudo setcap {NETHOGS_CAPS} {shlex.quote(nethogs_path)}",
+        exit_on_fail=False,
+    )
+    if not ok:
+        print(f"{YELLOW}{msg('caps_failed')}{NC}")
+    return ok
+
+
+def post_install_system_setup(distro):
+    """خطوات إعداد النظام بعد تثبيت الحزم"""
+    enable_vnstat_service(distro)
+    set_nethogs_caps()
 
 
 def get_python_command():
@@ -143,8 +211,7 @@ def install_dependencies(distro, install_optional=False):
         install_void(install_optional)
 
     print(f"{GREEN}{msg('deps_success_msg')}{NC}")
-    print(YELLOW + "Enabling vnstat service..." + NC)
-    run_command("sudo systemctl enable --now vnstat", exit_on_fail=False)
+    post_install_system_setup(distro)
 
     # print(
     #     f"{GREEN}Dependencies installed successfully. You can do step 2 now{NC}"
