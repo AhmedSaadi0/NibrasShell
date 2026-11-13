@@ -17,6 +17,14 @@ Singleton {
     property ListModel tasksModel: ListModel {}
     property ListModel dueNowModel: ListModel {}
 
+    // Centralized clock. Every UI element that needs a live timestamp reads
+    // this property instead of running its own timer - one timer for the
+    // whole application, no per delegate timers.
+    property date now: new Date()
+
+    // Index of the task the user jumped to from the "Due Now" section.
+    property int focusedTaskIndex: -1
+
     // AI Summary
     property string aiSummaryTitle: ""
     property string aiSummaryText: ""
@@ -54,6 +62,24 @@ Singleton {
         onTriggered: root._checkDueTasks()
     }
 
+    // Single source of truth for "now". Drives every relative time label
+    // (overdue chips, countdowns) without recreating any model.
+    Timer {
+        id: clockTimer
+        interval: 30000
+        repeat: true
+        running: true
+        onTriggered: root.now = new Date()
+    }
+
+    // Clears the focus highlight after a short while.
+    Timer {
+        id: focusClearTimer
+        interval: 1800
+        repeat: false
+        onTriggered: root.focusedTaskIndex = -1
+    }
+
     Timer {
         id: aiDebounce
         interval: 2500
@@ -64,7 +90,7 @@ Singleton {
     // -----------------------------
     // Public API
     // -----------------------------
-    function addTask(title, date, urgent) {
+    function addTask(title, date, urgent, notes) {
         if (!title || title.trim() === "")
             return;
 
@@ -73,6 +99,7 @@ Singleton {
 
         tasksModel.append({
             "title": title,
+            "notes": notes || "",
             "date": dateLabel,
             "dueAt": dueAt,
             "timestamp": new Date().getTime(),
@@ -98,6 +125,28 @@ Singleton {
         _saveToDisk();
         _rebuildDueNowModel();
         scheduleAiSummary();
+    }
+
+    function completeTask(index) {
+        if (index < 0 || index >= tasksModel.count)
+            return;
+        tasksModel.setProperty(index, "completed", true);
+        saveAndSort();
+    }
+
+    function removeTask(index) {
+        if (index < 0 || index >= tasksModel.count)
+            return;
+        tasksModel.remove(index);
+        saveAndSort();
+    }
+
+    // Highlights a task in the list for a short while.
+    function focusTask(index) {
+        if (index < 0)
+            return;
+        focusedTaskIndex = index;
+        focusClearTimer.restart();
     }
 
     function saveAndSort() {
@@ -148,6 +197,7 @@ Singleton {
             let item = tasksModel.get(i);
             arr.push({
                 "title": item.title,
+                "notes": item.notes || "",
                 "date": item.date,
                 "dueAt": item.dueAt || 0,
                 "timestamp": item.timestamp || 0,
@@ -204,7 +254,7 @@ Singleton {
     // Internal: Due Tracking
     // -----------------------------
     function _checkDueTasks() {
-        const now = new Date().getTime();
+        const now = root.now.getTime();
         let needsSave = false;
 
         for (let i = 0; i < tasksModel.count; i++) {
@@ -230,9 +280,10 @@ Singleton {
     }
 
     function _rebuildDueNowModel() {
-        const now = new Date().getTime();
+        const now = root.now.getTime();
         dueNowModel.clear();
 
+        const pending = [];
         for (let i = 0; i < tasksModel.count; i++) {
             let item = tasksModel.get(i);
             if (item.completed)
@@ -240,14 +291,23 @@ Singleton {
             if (!item.dueAt || item.dueAt > now)
                 continue;
 
-            dueNowModel.append({
+            pending.push({
                 "title": item.title,
+                "notes": item.notes || "",
                 "date": item.date,
                 "dueAt": item.dueAt,
                 "isUrgent": item.isUrgent,
                 "sourceIndex": i
             });
         }
+
+        // Most overdue first, so the worst offender is always on top.
+        pending.sort(function (a, b) {
+            return a.dueAt - b.dueAt;
+        });
+
+        for (let i = 0; i < pending.length; i++)
+            dueNowModel.append(pending[i]);
     }
 
     // -----------------------------
@@ -298,6 +358,7 @@ Singleton {
             let item = tasksModel.get(i);
             tasks.push({
                 "title": item.title,
+                "notes": item.notes || "",
                 "date": item.date,
                 "dueAt": item.dueAt || 0,
                 "isUrgent": item.isUrgent,
@@ -315,6 +376,7 @@ Singleton {
     // -----------------------------
     function _normalizeTask(raw) {
         let title = raw.title || "";
+        let notes = raw.notes || "";
         let isUrgent = !!raw.isUrgent;
         let completed = !!raw.completed;
         let timestamp = raw.timestamp || new Date().getTime();
@@ -324,6 +386,7 @@ Singleton {
 
         return {
             "title": title,
+            "notes": notes,
             "date": dateLabel,
             "dueAt": dueAt,
             "timestamp": timestamp,
@@ -366,6 +429,7 @@ Singleton {
     function _snapshotTask(item, index) {
         return {
             "title": item.title,
+            "notes": item.notes || "",
             "date": item.date,
             "dueAt": item.dueAt || 0,
             "isUrgent": item.isUrgent,
