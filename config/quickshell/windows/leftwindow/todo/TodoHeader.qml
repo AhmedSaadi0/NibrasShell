@@ -37,7 +37,7 @@ HeaderCard {
     // --- Input sizing ---
     // The editor follows its content: a short title keeps the field compact,
     // a long one grows until it reaches its share of the available space.
-    // Beyond that the TextArea scrolls internally instead of pushing the
+    // Beyond that the text scrolls inside the field instead of pushing the
     // whole menu down.
     //
     // The minimum is three lines (the field is a multi line editor, Enter
@@ -72,10 +72,14 @@ HeaderCard {
 
     // --- Functions ---
     // Height the editor needs for its current content, clamped to the
-    // allowed range. TextArea has no implicitContentHeight, paintedHeight
-    // already includes the padding.
+    // allowed range.
+    //
+    // implicitHeight is the text height plus the field padding, which is
+    // exactly the height the scrollable content needs. paintedHeight only
+    // covers the text itself, so it leaves a permanent gap of padding that
+    // shows up as a scrollbar for text that actually fits.
     function editorHeight(area, minHeight, maxHeight) {
-        var needed = area.paintedHeight;
+        var needed = area.implicitHeight;
         if (!needed || needed <= 0)
             needed = area.contentHeight + area.topPadding + area.bottomPadding;
         return Math.max(minHeight, Math.min(maxHeight, needed));
@@ -128,80 +132,114 @@ HeaderCard {
         Item {
             id: editorStack
             Layout.fillWidth: true
+            // The editor grows with its content until it reaches its share of
+            // the available space, then the text scrolls inside the field.
+            // The preview is capped the same way so a long task can never
+            // push the task list out of the menu.
             Layout.preferredHeight: headerRoot.previewEnabled
-                ? previewColumn.implicitHeight
+                ? Math.max(headerRoot.minInputHeight, Math.min(headerRoot.maxInputHeight, previewColumn.implicitHeight))
                 : headerRoot.editorHeight(taskInput, headerRoot.minInputHeight, headerRoot.maxInputHeight)
 
-            // Live preview of what the task will look like in the list.
-            Column {
-                id: previewColumn
-                anchors.fill: parent
-                spacing: 8
-                visible: headerRoot.previewEnabled
-                opacity: headerRoot.previewMix
-                clip: true
-
-                MarkdownText {
-                    id: titlePreview
-                    width: previewColumn.width
-                    source: taskInput.text
-                    baseFontSize: 15
-                    textColor: headerRoot.colors.onSurface
-                }
-
-                MarkdownText {
-                    id: notesPreview
-                    width: previewColumn.width
-                    visible: notesInput.text.trim() !== ""
-                    source: notesInput.text
-                    baseFontSize: 13
-                    textColor: headerRoot.colors.onSurfaceVariant
-                }
-            }
-
             // Title Input
-            TextArea {
-                id: taskInput
-
+            //
+            // A TextArea is not scrollable on its own, it only scrolls when it
+            // lives directly inside a ScrollView. The ScrollView keeps the
+            // rounded background in place and scrolls the text underneath it.
+            ScrollView {
+                id: taskScroll
                 anchors.fill: parent
                 opacity: 1 - headerRoot.previewMix
                 visible: opacity > 0.01
                 enabled: !headerRoot.previewEnabled
+                clip: true
 
-                placeholderText: "Add a new task... (markdown supported)"
-                placeholderTextColor: headerRoot.colors.onSurfaceVariant
-                color: headerRoot.colors.onSurface
-                font.family: headerRoot.typo.bodyFont
-                font.pixelSize: 15
-                wrapMode: Text.Wrap
-                selectByMouse: true
+                // Only the vertical overflow is scrollable, the text always
+                // wraps to the width of the field.
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
-                background: Rectangle {
-                    radius: headerRoot.dims.elementRadius
-                    color: Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.04)
-                    border.width: taskInput.activeFocus ? 1.5 : 1
-                    border.color: taskInput.activeFocus
-                        ? headerRoot.colors.primary
-                        : Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.08)
+                TextArea {
+                    id: taskInput
 
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 150
+                    placeholderText: "Add a new task... (markdown supported)"
+                    placeholderTextColor: headerRoot.colors.onSurfaceVariant
+                    color: headerRoot.colors.onSurface
+                    font.family: headerRoot.typo.bodyFont
+                    font.pixelSize: 15
+                    wrapMode: Text.Wrap
+                    selectByMouse: true
+
+                    background: Rectangle {
+                        radius: headerRoot.dims.elementRadius
+                        color: Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.04)
+                        border.width: taskInput.activeFocus ? 1.5 : 1
+                        border.color: taskInput.activeFocus
+                            ? headerRoot.colors.primary
+                            : Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.08)
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 150
+                            }
+                        }
+                    }
+
+                    // Enter / Shift+Enter add a new line, Ctrl+Enter sends the task.
+                    Keys.onPressed: event => {
+                        const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
+                        const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+
+                        if (isReturn && isModifier) {
+                            headerRoot.submitNewTask();
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Escape && headerRoot.previewEnabled) {
+                            headerRoot.togglePreview();
+                            event.accepted = true;
                         }
                     }
                 }
+            }
 
-                // Enter / Shift+Enter add a new line, Ctrl+Enter sends the task.
-                Keys.onPressed: event => {
-                    const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
-                    const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+            // Live preview of what the task will look like in the list.
+            //
+            // Declared after the input on purpose: while the preview is open
+            // the input is disabled, and a disabled item on top would swallow
+            // the mouse events instead of letting the preview scroll.
+            Flickable {
+                id: previewFlick
+                anchors.fill: parent
+                visible: headerRoot.previewEnabled
+                opacity: headerRoot.previewMix
+                clip: true
+                interactive: contentHeight > height
+                boundsBehavior: Flickable.StopAtBounds
+                contentWidth: width
+                contentHeight: previewColumn.implicitHeight
 
-                    if (isReturn && isModifier) {
-                        headerRoot.submitNewTask();
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Escape && headerRoot.previewEnabled) {
-                        headerRoot.togglePreview();
-                        event.accepted = true;
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
+
+                Column {
+                    id: previewColumn
+                    width: previewFlick.width
+                    spacing: 8
+
+                    MarkdownText {
+                        id: titlePreview
+                        width: parent.width
+                        source: taskInput.text
+                        baseFontSize: 15
+                        textColor: headerRoot.colors.onSurface
+                    }
+
+                    MarkdownText {
+                        id: notesPreview
+                        width: parent.width
+                        visible: notesInput.text.trim() !== ""
+                        source: notesInput.text
+                        baseFontSize: 13
+                        textColor: headerRoot.colors.onSurfaceVariant
                     }
                 }
             }
@@ -215,49 +253,58 @@ HeaderCard {
             visible: headerRoot.notesExpand > 0.01
             clip: true
 
-            TextArea {
-                id: notesInput
-
+            // Same as the title input: the notes scroll inside the field once
+            // they no longer fit.
+            ScrollView {
+                id: notesScroll
                 anchors.fill: parent
+                clip: true
 
-                placeholderText: "Add details... (markdown supported)"
-                placeholderTextColor: headerRoot.colors.onSurfaceVariant
-                color: headerRoot.colors.onSurface
-                font.family: headerRoot.typo.bodyFont
-                font.pixelSize: 13
-                wrapMode: Text.Wrap
-                selectByMouse: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
-                background: Rectangle {
-                    radius: headerRoot.dims.elementRadius
-                    color: Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.03)
-                    border.width: notesInput.activeFocus ? 1.5 : 1
-                    border.color: notesInput.activeFocus
-                        ? headerRoot.colors.primary
-                        : Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.06)
+                TextArea {
+                    id: notesInput
 
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 150
+                    placeholderText: "Add details... (markdown supported)"
+                    placeholderTextColor: headerRoot.colors.onSurfaceVariant
+                    color: headerRoot.colors.onSurface
+                    font.family: headerRoot.typo.bodyFont
+                    font.pixelSize: 13
+                    wrapMode: Text.Wrap
+                    selectByMouse: true
+
+                    background: Rectangle {
+                        radius: headerRoot.dims.elementRadius
+                        color: Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.03)
+                        border.width: notesInput.activeFocus ? 1.5 : 1
+                        border.color: notesInput.activeFocus
+                            ? headerRoot.colors.primary
+                            : Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.06)
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 150
+                            }
                         }
                     }
-                }
 
-                // Enter adds a line, Ctrl+Enter closes the notes.
-                Keys.onPressed: event => {
-                    const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
-                    const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+                    // Enter adds a line, Ctrl+Enter closes the notes.
+                    Keys.onPressed: event => {
+                        const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
+                        const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
 
-                    if (isReturn && isModifier) {
-                        headerRoot.notesOpen = false;
-                        headerRoot.notesExpand = 0;
-                        taskInput.forceActiveFocus();
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Escape) {
-                        headerRoot.notesOpen = false;
-                        headerRoot.notesExpand = 0;
-                        taskInput.forceActiveFocus();
-                        event.accepted = true;
+                        if (isReturn && isModifier) {
+                            headerRoot.notesOpen = false;
+                            headerRoot.notesExpand = 0;
+                            taskInput.forceActiveFocus();
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Escape) {
+                            headerRoot.notesOpen = false;
+                            headerRoot.notesExpand = 0;
+                            taskInput.forceActiveFocus();
+                            event.accepted = true;
+                        }
                     }
                 }
             }
