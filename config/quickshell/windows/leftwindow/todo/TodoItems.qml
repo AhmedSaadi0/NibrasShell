@@ -13,7 +13,7 @@ ListView {
 
     // --- Signals ---
     signal requestSave
-    signal requestCalendar(int index)
+    signal requestCalendar(int index, var anchorItem, real localX, real localY)
     signal requestRemove(int index)
 
     // --- Properties ---
@@ -464,7 +464,18 @@ ListView {
                         leftPadding: 10
                         rightPadding: 10
                         flat: true
-                        onClicked: todoList.requestCalendar(index)
+
+                        HoverHandler {
+                            id: dateBtnHover
+                            acceptedButtons: Qt.NoButton
+                        }
+
+                        onClicked: todoList.requestCalendar(
+                            index,
+                            dateBtnItem,
+                            dateBtnHover.hovered ? dateBtnHover.point.position.x : dateBtnItem.width / 2,
+                            dateBtnHover.hovered ? dateBtnHover.point.position.y : dateBtnItem.height
+                        )
 
                         background: Rectangle {
                             radius: dims.elementRadius

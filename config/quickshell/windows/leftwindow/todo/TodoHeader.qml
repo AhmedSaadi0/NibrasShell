@@ -13,7 +13,7 @@ HeaderCard {
 
     // --- Signals ---
     signal addTask(string title, bool urgent, string notes)
-    signal openCalendar
+    signal openCalendar(var anchorItem, real localX, real localY)
 
     // --- Properties ---
     property date selectedDate: new Date()
@@ -353,7 +353,16 @@ HeaderCard {
                 rightPadding: 14
                 flat: true
 
-                onClicked: headerRoot.openCalendar()
+                HoverHandler {
+                    id: dateBtnHover
+                    acceptedButtons: Qt.NoButton
+                }
+
+                onClicked: headerRoot.openCalendar(
+                    dateBtn,
+                    dateBtnHover.hovered ? dateBtnHover.point.position.x : dateBtn.width / 2,
+                    dateBtnHover.hovered ? dateBtnHover.point.position.y : dateBtn.height
+                )
 
                 background: Rectangle {
                     radius: headerRoot.dims.elementRadius

@@ -83,13 +83,34 @@ BaseMenuView {
         flick.contentY = Math.max(0, Math.min(pos.y - 80, maxY));
     }
 
+    // Popup coordinates are relative to root, not the scrolled Flickable
+    // content, so the calendar always opens beside the clicked date button.
+    function openCalendarAt(anchorItem, localX, localY) {
+        const pt = anchorItem
+            ? anchorItem.mapToItem(root, localX, localY)
+            : Qt.point(root.width / 2, root.height / 2);
+
+        const margin = 8;
+        const maxX = Math.max(margin, root.width - calendarPopup.width - margin);
+        const maxY = Math.max(margin, root.height - calendarPopup.height - margin);
+
+        calendarPopup.x = Math.max(margin, Math.min(pt.x - calendarPopup.width / 2, maxX));
+
+        let popupY = pt.y + 10;
+        if (popupY + calendarPopup.height > root.height - margin)
+            popupY = pt.y - calendarPopup.height - 10;
+        calendarPopup.y = Math.max(margin, Math.min(popupY, maxY));
+
+        calendarPopup.open();
+    }
+
     headerContent: TodoHeader {
         width: root.width
         availableHeight: root.height
         selectedDate: root.selectedDate
-        onOpenCalendar: {
+        onOpenCalendar: (anchorItem, localX, localY) => {
             root.activeCalendarIndex = -1;
-            calendarPopup.open();
+            root.openCalendarAt(anchorItem, localX, localY);
         }
         onAddTask: (title, urgent, notes) => root.addTask(title, urgent, notes)
     }
@@ -409,9 +430,9 @@ BaseMenuView {
                 listModel: TodoService.tasksModel
                 onRequestSave: TodoService.saveAndSort()
                 onRequestRemove: index => TodoService.removeTask(index)
-                onRequestCalendar: index => {
+                onRequestCalendar: (index, anchorItem, localX, localY) => {
                     root.activeCalendarIndex = index;
-                    calendarPopup.open();
+                    root.openCalendarAt(anchorItem, localX, localY);
                 }
             }
         }
@@ -419,10 +440,9 @@ BaseMenuView {
 
     CustomCalendar {
         id: calendarPopup
+        parent: root
         width: Math.min(320, Math.max(160, root.width - 16))
         height: Math.min(400, Math.max(240, root.height - 96))
-        x: Math.max(0, Math.min((root.width - width) / 2, root.width - width))
-        y: Math.max(0, Math.min(80, root.height - height))
         z: 100
         onDateSelected: date => {
             if (root.activeCalendarIndex === -1) {
