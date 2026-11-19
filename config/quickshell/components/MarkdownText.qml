@@ -25,22 +25,23 @@ Item {
     property string source: ""
 
     // --- Typography ------------------------------------------------------
-    readonly property var theme: ThemeManager.selectedTheme
-    readonly property var colors: theme.colors
-    readonly property var typo: theme.typography
+    // ThemeManager loads its theme asynchronously, so selectedTheme can be
+    // null during startup and while a theme is being swapped.
+    readonly property var theme: ThemeManager.selectedTheme || null
+    readonly property var colors: theme ? theme.colors : null
+    readonly property var typo: theme ? theme.typography : null
 
-    property int baseFontSize: typo.medium
-    property color textColor: colors.onSurface
+    property int baseFontSize: typo ? typo.medium : 14
+    property color textColor: colors ? colors.onSurface : palette.text
     property bool strikeThrough: false
 
     // --- Fast path -------------------------------------------------------
     readonly property bool plainText: !Markdown.hasMarkdown(source)
 
-    // The rendered height.
-    //
-    // Note: for rich text the implicitHeight of the Text element does NOT
-    // include the line height multiplier, so the last line would be clipped.
-    // contentHeight is the real height of the laid out document.
+    // Expose both dimensions: implicitWidth is the natural unwrapped width,
+    // contentHeight is the real laid-out height of rich text (it includes the
+    // line-height multiplier that implicitHeight omits).
+    implicitWidth: contentText.implicitWidth
     implicitHeight: contentText.contentHeight
 
     Text {
@@ -60,10 +61,24 @@ Item {
         // Nothing may paint outside of the available width.
         clip: true
 
-        font.family: root.typo.bodyFont
+        font.family: root.typo ? root.typo.bodyFont : ""
         font.pixelSize: root.baseFontSize
         font.strikeout: root.strikeThrough
         color: root.textColor
         lineHeight: 1.25
+
+        onLinkActivated: link => {
+            // Qt has already parsed the href; validate it again at the point
+            // where the external URL would actually be opened.
+            if (Markdown.isSafeUrl(link))
+                Qt.openUrlExternally(link);
+        }
+
+        HoverHandler {
+            id: linkHover
+            cursorShape: contentText.hoveredLink !== ""
+                ? Qt.PointingHandCursor
+                : Qt.ArrowCursor
+        }
     }
 }

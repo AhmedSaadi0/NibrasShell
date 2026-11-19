@@ -76,12 +76,6 @@ Item {
             }
         }
 
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 200
-                easing.type: Easing.OutCubic
-            }
-        }
     }
 
     // ─── Flickable يبدأ من تحت TopAppBar ─────────────────────────

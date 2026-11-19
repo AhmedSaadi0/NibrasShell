@@ -3,8 +3,10 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+
 import "root:/themes"
 import "root:/components"
+import "root:/services"
 
 ListView {
     id: todoList
@@ -12,6 +14,7 @@ ListView {
     // --- Signals ---
     signal requestSave
     signal requestCalendar(int index)
+    signal requestRemove(int index)
 
     // --- Properties ---
     property var listModel
@@ -24,6 +27,9 @@ ListView {
     clip: true
     interactive: false
 
+    // The service owns the short-lived highlight so it clears on its timer.
+    currentIndex: TodoService.focusedTaskIndex
+
     spacing: dims.spacingMedium
     topMargin: dims.spacingSmall
     bottomMargin: dims.spacingLarge
@@ -32,19 +38,13 @@ ListView {
     model: listModel
 
     // --- Functions ---
-    // Height the notes editor needs for its current content.
+    // implicitHeight is the text height plus field padding, which is what the
+    // ScrollView needs. paintedHeight leaves a permanent padding gap.
     function editorHeight(area, minHeight, maxHeight) {
-        var needed = area.paintedHeight;
+        var needed = area.implicitHeight;
         if (!needed || needed <= 0)
             needed = area.contentHeight + area.topPadding + area.bottomPadding;
         return Math.max(minHeight, Math.min(maxHeight, needed));
-    }
-
-    // Highlights a task (used when jumping from the "Due Now" section).
-    function focusTask(index) {
-        if (index < 0 || index >= count)
-            return;
-        currentIndex = index;
     }
 
     // --- Transitions ---
@@ -63,21 +63,6 @@ ListView {
             easing.type: Easing.OutBack
         }
     }
-    remove: Transition {
-        ParallelAnimation {
-            NumberAnimation {
-                property: "opacity"
-                to: 0
-                duration: 300
-            }
-            NumberAnimation {
-                property: "height"
-                to: 0
-                duration: 300
-                easing.type: Easing.InOutQuad
-            }
-        }
-    }
     displaced: Transition {
         NumberAnimation {
             property: "y"
@@ -90,9 +75,11 @@ ListView {
     delegate: MouseArea {
         id: itemRoot
         width: todoList.width
-
-        // حساب الارتفاع: المحتوى + هوامش
         height: bgRect.height
+
+        // The card keeps its height while the delegate collapses; clipping
+        // prevents the content from bleeding out during the remove animation.
+        clip: true
 
         hoverEnabled: true
         propagateComposedEvents: true
@@ -100,6 +87,8 @@ ListView {
 
         property bool isEditing: false
         property bool isEditingNotes: false
+        property bool draftUrgent: model.isUrgent
+        property bool taskCompleted: model.completed
 
         ListView.onRemove: removeAnim.start()
 
@@ -110,12 +99,21 @@ ListView {
                 property: "ListView.delayRemove"
                 value: true
             }
-            NumberAnimation {
-                target: itemRoot
-                property: "height"
-                to: 0
-                duration: 250
-                easing.type: Easing.InOutQuad
+            ParallelAnimation {
+                NumberAnimation {
+                    target: itemRoot
+                    property: "height"
+                    to: 0
+                    duration: 250
+                    easing.type: Easing.InOutQuad
+                }
+                NumberAnimation {
+                    target: itemRoot
+                    property: "opacity"
+                    to: 0
+                    duration: 250
+                    easing.type: Easing.InOutQuad
+                }
             }
             PropertyAction {
                 target: itemRoot
@@ -124,14 +122,66 @@ ListView {
             }
         }
 
-        // --- Background Card (Original Styles) ---
+        function beginEdit() {
+            draftUrgent = model.isUrgent;
+            editInput.text = model.title || "";
+            isEditing = true;
+        }
+
+        function commitEdit() {
+            if (!isEditing || editInput.text.trim() === "")
+                return false;
+            model.title = editInput.text;
+            model.isUrgent = draftUrgent;
+            isEditing = false;
+            return true;
+        }
+
+        function cancelEdit() {
+            editInput.text = model.title || "";
+            draftUrgent = model.isUrgent;
+            isEditing = false;
+        }
+
+        function commitNotes() {
+            if (!isEditingNotes)
+                return false;
+            model.notes = notesInput.text;
+            isEditingNotes = false;
+            return true;
+        }
+
+        function cancelNotes() {
+            notesInput.text = model.notes || "";
+            isEditingNotes = false;
+        }
+
+        function saveAll() {
+            const titleChanged = commitEdit();
+            const notesChanged = commitNotes();
+            if (titleChanged || notesChanged)
+                todoList.requestSave();
+        }
+
+        function cancelAll() {
+            cancelEdit();
+            cancelNotes();
+        }
+
+        // Externally completed tasks (e.g. from Due Now) must not leave stale
+        // editors open on this delegate.
+        onTaskCompletedChanged: {
+            if (taskCompleted)
+                cancelAll();
+        }
+
+        // --- Background Card ---
         Rectangle {
             id: bgRect
             width: parent.width
-            height: mainLayout.implicitHeight + 24 // Dynamic height based on content
+            height: mainLayout.implicitHeight + 24
             radius: dims.elementRadius
 
-            // 1. Original Border Logic
             border.width: 1
             border.color: {
                 if (isEditing || isEditingNotes)
@@ -141,9 +191,8 @@ ListView {
                 return Qt.rgba(colors.primary.r, colors.primary.g, colors.primary.b, 0.05);
             }
 
-            // 2. Original Color Logic
             color: {
-                if (model.completed)
+                if (taskCompleted)
                     return Qt.rgba(colors.primaryContainer.r, colors.primaryContainer.g, colors.primaryContainer.b, 0.5);
                 if (itemRoot.containsMouse || isEditing)
                     return Qt.lighter(colors.surfaceContainerHigh, 1.2);
@@ -156,7 +205,7 @@ ListView {
                 }
             }
 
-            // 3. Original Side Bar
+            // Side bar
             Rectangle {
                 width: 4
                 anchors.left: parent.left
@@ -166,7 +215,7 @@ ListView {
                 anchors.leftMargin: 6
                 radius: dims.shapeExtraSmall
                 color: {
-                    if (model.completed)
+                    if (taskCompleted)
                         return colors.onSurfaceVariant;
                     if (model.isUrgent)
                         return colors.error;
@@ -179,15 +228,14 @@ ListView {
                 }
             }
 
-            // --- Main Content Column ---
             ColumnLayout {
                 id: mainLayout
                 anchors.fill: parent
-                anchors.leftMargin: 20 // Space for side bar
+                anchors.leftMargin: 20
                 anchors.rightMargin: dims.spacingLarge
                 anchors.topMargin: 12
                 anchors.bottomMargin: 12
-                spacing: 8 // Space between Title Row and Footer Row
+                spacing: 8
 
                 // --- TOP ROW: Checkbox + Title ---
                 RowLayout {
@@ -195,10 +243,9 @@ ListView {
                     spacing: dims.spacingLarge
                     Layout.alignment: Qt.AlignTop
 
-                    // Checkbox (Original Style)
                     CheckBox {
                         id: completionCheck
-                        checked: model.completed
+                        checked: taskCompleted
                         Layout.alignment: Qt.AlignTop
                         Layout.topMargin: 2
                         enabled: !isEditing && !isEditingNotes
@@ -206,7 +253,7 @@ ListView {
                         onClicked: {
                             model.completed = checked;
                             if (checked)
-                                isEditing = false;
+                                cancelAll();
                             todoList.requestSave();
                         }
 
@@ -241,55 +288,59 @@ ListView {
                         }
                     }
 
-                    // Title Text (View Mode - markdown aware)
                     MarkdownText {
                         id: titleView
                         visible: !isEditing
                         source: model.title || ""
                         baseFontSize: typo.medium
-                        strikeThrough: model.completed
-                        textColor: model.completed ? colors.onSurfaceVariant : colors.onSurface
+                        strikeThrough: taskCompleted
+                        textColor: taskCompleted ? colors.onSurfaceVariant : colors.onSurface
                         Layout.fillWidth: true
                     }
 
-                    // Title Input (Edit Mode - raw markdown source)
-                    TextArea {
-                        id: editInput
+                    ScrollView {
+                        id: editScroll
                         visible: isEditing
                         Layout.fillWidth: true
-                        text: model.title
-                        font.family: typo.bodyFont
-                        font.pixelSize: typo.medium
-                        font.bold: true
-                        wrapMode: Text.Wrap
-                        color: colors.onSurface
-                        // Original Edit Background
-                        background: Rectangle {
-                            color: Qt.rgba(colors.primary.r, colors.primary.g, colors.primary.b, 0.05)
-                            radius: dims.shapeExtraSmall
-                        }
-                        // Enter / Shift+Enter add a new line, Ctrl+Enter saves.
-                        Keys.onPressed: event => {
-                            const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
-                            const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+                        Layout.preferredHeight: todoList.editorHeight(editInput, 46, 160)
+                        clip: true
 
-                            if (isReturn && isModifier) {
-                                if (editInput.text.trim() !== "") {
-                                    model.title = editInput.text;
-                                    isEditing = false;
-                                    todoList.requestSave();
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                        TextArea {
+                            id: editInput
+                            width: editScroll.width
+                            text: model.title || ""
+                            font.family: typo.bodyFont
+                            font.pixelSize: typo.medium
+                            font.bold: true
+                            wrapMode: Text.Wrap
+                            selectByMouse: true
+                            color: colors.onSurface
+
+                            background: Rectangle {
+                                color: Qt.rgba(colors.primary.r, colors.primary.g, colors.primary.b, 0.05)
+                                radius: dims.shapeExtraSmall
+                            }
+
+                            Keys.onPressed: event => {
+                                const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
+                                const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+
+                                if (isReturn && isModifier) {
+                                    itemRoot.saveAll();
+                                    event.accepted = true;
+                                } else if (event.key === Qt.Key_Escape) {
+                                    itemRoot.cancelAll();
+                                    event.accepted = true;
                                 }
-                                event.accepted = true;
-                            } else if (event.key === Qt.Key_Escape) {
-                                editInput.text = model.title;
-                                isEditing = false;
-                                event.accepted = true;
                             }
                         }
                     }
                 }
 
-                // --- NOTES (View Mode - markdown aware) ---
+                // --- NOTES (View Mode) ---
                 MarkdownText {
                     id: notesView
                     visible: !isEditingNotes && (model.notes || "") !== ""
@@ -297,27 +348,32 @@ ListView {
                     baseFontSize: typo.small
                     textColor: colors.onSurfaceVariant
                     Layout.fillWidth: true
-                    Layout.leftMargin: 34 // aligns with the title text
+                    Layout.leftMargin: 34
                     Layout.topMargin: -2
                 }
 
                 // --- NOTES (Edit Mode) ---
-                ColumnLayout {
-                    id: notesEditArea
+                ScrollView {
+                    id: notesScroll
                     visible: isEditingNotes
                     Layout.fillWidth: true
                     Layout.leftMargin: 34
-                    spacing: 6
+                    Layout.preferredHeight: todoList.editorHeight(notesInput, 46, 190)
+                    clip: true
+
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     TextArea {
                         id: notesInput
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: todoList.editorHeight(notesInput, 46, 190)
+                        width: notesScroll.width
+                        text: model.notes || ""
                         font.family: typo.bodyFont
                         font.pixelSize: typo.small
                         wrapMode: Text.Wrap
-                        color: colors.onSurface
                         selectByMouse: true
+                        color: colors.onSurface
+
                         background: Rectangle {
                             color: Qt.rgba(colors.primary.r, colors.primary.g, colors.primary.b, 0.05)
                             radius: dims.shapeExtraSmall
@@ -328,47 +384,40 @@ ListView {
                             const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
 
                             if (isReturn && isModifier) {
-                                model.notes = notesInput.text;
-                                isEditingNotes = false;
-                                todoList.requestSave();
+                                itemRoot.saveAll();
                                 event.accepted = true;
                             } else if (event.key === Qt.Key_Escape) {
-                                isEditingNotes = false;
+                                itemRoot.cancelAll();
                                 event.accepted = true;
                             }
                         }
                     }
+                }
 
-                    RowLayout {
+                RowLayout {
+                    visible: isEditingNotes
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 34
+                    spacing: 8
+
+                    Button {
+                        text: qsTr("Save")
+                        flat: true
+                        implicitHeight: 28
+                        font.pixelSize: typo.small
+                        onClicked: itemRoot.saveAll()
+                    }
+
+                    Button {
+                        text: qsTr("Cancel")
+                        flat: true
+                        implicitHeight: 28
+                        font.pixelSize: typo.small
+                        onClicked: itemRoot.cancelAll()
+                    }
+
+                    Item {
                         Layout.fillWidth: true
-                        spacing: 8
-
-                        Button {
-                            text: qsTr("Save")
-                            flat: true
-                            implicitHeight: 28
-                            font.pixelSize: typo.small
-                            onClicked: {
-                                model.notes = notesInput.text;
-                                isEditingNotes = false;
-                                todoList.requestSave();
-                            }
-                        }
-
-                        Button {
-                            text: qsTr("Cancel")
-                            flat: true
-                            implicitHeight: 28
-                            font.pixelSize: typo.small
-                            onClicked: {
-                                notesInput.text = model.notes || "";
-                                isEditingNotes = false;
-                            }
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
                     }
                 }
 
@@ -377,9 +426,6 @@ ListView {
                     Layout.fillWidth: true
                     spacing: 12
 
-                    // --- Left Side: Date & Urgent Badge ---
-
-                    // Date (View Mode)
                     Text {
                         visible: !isEditing
                         text: model.date
@@ -389,9 +435,8 @@ ListView {
                         opacity: 0.8
                     }
 
-                    // Urgent Badge (View Mode)
                     Rectangle {
-                        visible: !isEditing && model.isUrgent && !model.completed
+                        visible: !isEditing && model.isUrgent && !taskCompleted
                         width: urgentText.implicitWidth + 10
                         height: urgentText.implicitHeight + 4
                         radius: dims.shapeExtraSmall
@@ -399,7 +444,7 @@ ListView {
                         Text {
                             id: urgentText
                             anchors.centerIn: parent
-                            text: "URGENT"
+                            text: qsTr("URGENT")
                             font.family: typo.bodyFont
                             font.pixelSize: 9
                             font.bold: true
@@ -407,12 +452,11 @@ ListView {
                         }
                     }
 
-                    // Date Button (Edit Mode - Original Style reused)
                     Button {
                         id: dateBtnItem
                         visible: isEditing
                         text: "📅 " + model.date
-                        Layout.preferredHeight: 30 // Slightly smaller for footer
+                        Layout.preferredHeight: 30
                         leftPadding: 10
                         rightPadding: 10
                         flat: true
@@ -420,7 +464,9 @@ ListView {
 
                         background: Rectangle {
                             radius: dims.elementRadius
-                            color: dateBtnItem.hovered ? Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.08) : Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.04)
+                            color: dateBtnItem.hovered
+                                ? Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.08)
+                                : Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.04)
                         }
                         contentItem: Text {
                             text: parent.text
@@ -434,15 +480,13 @@ ListView {
                         }
                     }
 
-                    // Urgent Toggle (Edit Mode - Original Style reused)
                     Button {
                         id: urgentBtnItem
                         visible: isEditing
                         checkable: true
-                        checked: model.isUrgent
+                        checked: itemRoot.draftUrgent
                         Layout.preferredHeight: 30
-                        Layout.preferredWidth: checked ? 90 : 80
-                        onClicked: model.isUrgent = !model.isUrgent
+                        onClicked: itemRoot.draftUrgent = !itemRoot.draftUrgent
 
                         background: Rectangle {
                             radius: dims.shapeLarge
@@ -456,7 +500,6 @@ ListView {
                             }
                         }
                         contentItem: RowLayout {
-                            anchors.centerIn: parent
                             spacing: 5
                             Text {
                                 text: urgentBtnItem.checked ? "🔥" : "🏳️"
@@ -464,7 +507,7 @@ ListView {
                                 color: urgentBtnItem.checked ? colors.onError : colors.onSurfaceVariant
                             }
                             Text {
-                                text: urgentBtnItem.checked ? "URGENT" : "Normal"
+                                text: urgentBtnItem.checked ? qsTr("URGENT") : qsTr("Normal")
                                 font.family: typo.bodyFont
                                 font.pixelSize: 10
                                 font.bold: true
@@ -473,20 +516,17 @@ ListView {
                         }
                     }
 
-                    // Spacer to push buttons to right
                     Item {
                         Layout.fillWidth: true
                     }
 
-                    // --- Right Side: Action Buttons (Original Logic) ---
-
-                    // Notes Toggle
                     Button {
                         id: notesBtnItem
 
                         Layout.preferredWidth: 34
                         Layout.preferredHeight: 34
-                        visible: !model.completed && !isEditing
+                        visible: !taskCompleted && !isEditing
+                        enabled: opacity > 0.1
 
                         flat: true
                         opacity: (model.notes || "") !== "" ? 1 : (isEditingNotes || itemRoot.containsMouse || notesBtnItem.hovered ? 1 : 0)
@@ -497,10 +537,13 @@ ListView {
                         }
 
                         onClicked: {
-                            notesInput.text = model.notes || "";
-                            isEditingNotes = !isEditingNotes;
-                            if (isEditingNotes)
+                            if (isEditingNotes) {
+                                itemRoot.cancelNotes();
+                            } else {
+                                notesInput.text = model.notes || "";
+                                isEditingNotes = true;
                                 notesInput.forceActiveFocus();
+                            }
                         }
 
                         background: Rectangle {
@@ -519,14 +562,13 @@ ListView {
                         ToolTip.text: (model.notes || "") !== "" ? qsTr("Edit details") : qsTr("Add details")
                     }
 
-                    // Edit/Save Button
                     Button {
                         id: editBtn
                         Layout.preferredWidth: 34
                         Layout.preferredHeight: 34
-                        visible: !model.completed
+                        visible: !taskCompleted
+                        enabled: opacity > 0.1
 
-                        // Original Opacity Logic
                         flat: true
                         opacity: isEditing || itemRoot.containsMouse || editBtn.hovered ? 1 : 0
                         Behavior on opacity {
@@ -537,14 +579,10 @@ ListView {
 
                         onClicked: {
                             if (isEditing) {
-                                if (editInput.text.trim() !== "") {
-                                    model.title = editInput.text;
-                                    isEditing = false;
-                                    todoList.requestSave();
-                                }
+                                if (editInput.text.trim() !== "")
+                                    itemRoot.saveAll();
                             } else {
-                                editInput.text = model.title;
-                                isEditing = true;
+                                itemRoot.beginEdit();
                                 editInput.forceActiveFocus();
                             }
                         }
@@ -562,17 +600,16 @@ ListView {
                             verticalAlignment: Text.AlignVCenter
                         }
                         ToolTip.visible: hovered
-                        ToolTip.text: isEditing ? "Save" : "Edit"
+                        ToolTip.text: isEditing ? qsTr("Save") : qsTr("Edit")
                     }
 
-                    // Delete Button
                     Button {
                         id: deleteBtn
                         Layout.preferredWidth: 34
                         Layout.preferredHeight: 34
                         visible: !isEditing
+                        enabled: opacity > 0.1
 
-                        // Original Opacity Logic
                         flat: true
                         opacity: itemRoot.containsMouse || deleteBtn.hovered ? 1 : 0
                         Behavior on opacity {
@@ -581,10 +618,7 @@ ListView {
                             }
                         }
 
-                        onClicked: {
-                            todoList.listModel.remove(index);
-                            todoList.requestSave();
-                        }
+                        onClicked: todoList.requestRemove(index)
 
                         background: Rectangle {
                             radius: dims.elementRadius
@@ -599,7 +633,7 @@ ListView {
                             verticalAlignment: Text.AlignVCenter
                         }
                         ToolTip.visible: hovered
-                        ToolTip.text: "Delete"
+                        ToolTip.text: qsTr("Delete")
                     }
                 }
             }

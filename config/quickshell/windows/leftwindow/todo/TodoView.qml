@@ -34,6 +34,14 @@ BaseMenuView {
     function overdueLabel(dueAt) {
         if (!dueAt)
             return "";
+
+        const dueDay = new Date(dueAt);
+        const today = new Date(TodoService.now.getTime());
+        if (dueDay.getFullYear() === today.getFullYear()
+                && dueDay.getMonth() === today.getMonth()
+                && dueDay.getDate() === today.getDate())
+            return qsTr("Due today");
+
         const diff = TodoService.now.getTime() - dueAt;
         if (diff < 0)
             return qsTr("pending");
@@ -57,7 +65,6 @@ BaseMenuView {
         if (index < 0)
             return;
 
-        tasksList.focusTask(index);
         TodoService.focusTask(index);
         scrollToTask(index);
     }
@@ -87,7 +94,7 @@ BaseMenuView {
         onAddTask: (title, urgent, notes) => root.addTask(title, urgent, notes)
     }
 
-    // المحتوى الرئيسي
+    // Main content
     ColumnLayout {
         Layout.fillWidth: true
         spacing: root.dims.spacingLarge
@@ -96,13 +103,23 @@ BaseMenuView {
         Layout.rightMargin: root.dims.menuWidgetsMargin
         Layout.topMargin: root.dims.menuWidgetsMargin
 
-        // --- 1. كرت الذكاء الاصطناعي ---
+        // --- 1. AI summary ---
+        Text {
+            visible: TodoService.hasLoadError
+            Layout.fillWidth: true
+            text: qsTr("Todo data could not be loaded; changes are disabled.")
+            font.family: root.typo.bodyFont
+            font.pixelSize: root.typo.small
+            color: root.colors.error
+            wrapMode: Text.Wrap
+        }
+
         AISummaryCard {
             id: smartTodoCard
             Layout.fillWidth: true
             visible: TodoService.aiSummaryText !== ""
 
-            title: TodoService.aiSummaryTitle !== "" ? TodoService.aiSummaryTitle : qsTr("المحلل الذكي")
+            title: TodoService.aiSummaryTitle !== "" ? TodoService.aiSummaryTitle : qsTr("AI Summary")
             summaryText: TodoService.aiSummaryText
             iconText: "✨"
 
@@ -140,7 +157,7 @@ BaseMenuView {
             }
         }
 
-        // --- 2. المهام العاجلة (Due Now) ---
+        // --- 2. Due now ---
         ColumnLayout {
             id: dueNowSection
             Layout.fillWidth: true
@@ -263,7 +280,7 @@ BaseMenuView {
                                     spacing: 10
 
                                     Text {
-                                        text: isUrgent ? "🔥" : "⏰"
+                                        text: model.isUrgent ? "🔥" : "⏰"
                                         font.pixelSize: 16
                                         Layout.alignment: Qt.AlignTop
                                     }
@@ -377,7 +394,7 @@ BaseMenuView {
             }
         }
 
-        // --- 3. بقية المهام ---
+        // --- 3. All tasks ---
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 10
@@ -386,11 +403,11 @@ BaseMenuView {
             TodoItems {
                 id: tasksList
                 Layout.fillWidth: true
-                // TODO: -> Convert 64 to a const and use it instead
                 Layout.preferredHeight: contentHeight + 4
 
                 listModel: TodoService.tasksModel
                 onRequestSave: TodoService.saveAndSort()
+                onRequestRemove: index => TodoService.removeTask(index)
                 onRequestCalendar: index => {
                     root.activeCalendarIndex = index;
                     calendarPopup.open();
@@ -401,8 +418,10 @@ BaseMenuView {
 
     CustomCalendar {
         id: calendarPopup
-        x: (root.width - width) / 2
-        y: 80
+        width: Math.min(320, Math.max(160, root.width - 16))
+        height: Math.min(400, Math.max(240, root.height - 96))
+        x: Math.max(0, Math.min((root.width - width) / 2, root.width - width))
+        y: Math.max(0, Math.min(80, root.height - height))
         z: 100
         onDateSelected: date => {
             if (root.activeCalendarIndex === -1) {

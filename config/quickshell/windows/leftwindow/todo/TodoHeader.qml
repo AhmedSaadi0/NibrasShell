@@ -16,7 +16,7 @@ HeaderCard {
     signal openCalendar
 
     // --- Properties ---
-    property date selectedDate
+    property date selectedDate: new Date()
 
     // Height of the page the header lives in. The editor grows with its
     // content but never uses more than its share of that space.
@@ -54,8 +54,8 @@ HeaderCard {
     // Animations are only used for discrete toggles (notes / preview).
     // While typing the heights are updated immediately, animating them would
     // fight the layout and make the text cursor jitter.
-    property real notesExpand: 0
-    property real previewMix: 0
+    property real notesExpand: notesOpen ? 1 : 0
+    property real previewMix: previewEnabled ? 1 : 0
 
     Behavior on notesExpand {
         NumberAnimation {
@@ -85,7 +85,7 @@ HeaderCard {
         return Math.max(minHeight, Math.min(maxHeight, needed));
     }
 
-    // دالة لجمع منطق الإضافة من الزر ومن مفتاح Enter
+    // Shared submit path for the button and Ctrl+Enter.
     function submitNewTask() {
         const title = taskInput.text.trim();
         if (title === "") {
@@ -96,12 +96,12 @@ HeaderCard {
         notesInput.text = "";
         urgentBtn.checked = false;
         headerRoot.notesOpen = false;
-        headerRoot.notesExpand = 0;
+        headerRoot.previewEnabled = false;
+        taskInput.forceActiveFocus();
     }
 
     function toggleNotes() {
         headerRoot.notesOpen = !headerRoot.notesOpen;
-        headerRoot.notesExpand = headerRoot.notesOpen ? 1 : 0;
         if (headerRoot.notesOpen) {
             notesInput.forceActiveFocus();
         } else {
@@ -111,10 +111,10 @@ HeaderCard {
 
     function togglePreview() {
         headerRoot.previewEnabled = !headerRoot.previewEnabled;
-        headerRoot.previewMix = headerRoot.previewEnabled ? 1 : 0;
-        if (!headerRoot.previewEnabled) {
+        if (headerRoot.previewEnabled)
+            previewFlick.forceActiveFocus();
+        else
             taskInput.forceActiveFocus();
-        }
     }
 
     ColumnLayout {
@@ -161,7 +161,7 @@ HeaderCard {
                 TextArea {
                     id: taskInput
 
-                    placeholderText: "Add a new task... (markdown supported)"
+                    placeholderText: qsTr("Add a new task... (markdown supported)")
                     placeholderTextColor: headerRoot.colors.onSurfaceVariant
                     color: headerRoot.colors.onSurface
                     font.family: headerRoot.typo.bodyFont
@@ -210,6 +210,7 @@ HeaderCard {
                 anchors.fill: parent
                 visible: headerRoot.previewEnabled
                 opacity: headerRoot.previewMix
+                focus: headerRoot.previewEnabled
                 clip: true
                 interactive: contentHeight > height
                 boundsBehavior: Flickable.StopAtBounds
@@ -218,6 +219,15 @@ HeaderCard {
 
                 ScrollBar.vertical: ScrollBar {
                     policy: ScrollBar.AsNeeded
+                }
+
+                // taskScroll is disabled in preview mode, so Escape must be
+                // handled on the item that actually has focus here.
+                Keys.onEscapePressed: event => {
+                    if (headerRoot.previewEnabled) {
+                        headerRoot.togglePreview();
+                        event.accepted = true;
+                    }
                 }
 
                 Column {
@@ -266,7 +276,7 @@ HeaderCard {
                 TextArea {
                     id: notesInput
 
-                    placeholderText: "Add details... (markdown supported)"
+                    placeholderText: qsTr("Add details... (markdown supported)")
                     placeholderTextColor: headerRoot.colors.onSurfaceVariant
                     color: headerRoot.colors.onSurface
                     font.family: headerRoot.typo.bodyFont
@@ -296,12 +306,10 @@ HeaderCard {
 
                         if (isReturn && isModifier) {
                             headerRoot.notesOpen = false;
-                            headerRoot.notesExpand = 0;
                             taskInput.forceActiveFocus();
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Escape) {
                             headerRoot.notesOpen = false;
-                            headerRoot.notesExpand = 0;
                             taskInput.forceActiveFocus();
                             event.accepted = true;
                         }
@@ -333,8 +341,10 @@ HeaderCard {
                 onClicked: headerRoot.openCalendar()
 
                 background: Rectangle {
-                    radius: dims.elementRadius
-                    color: dateBtn.hovered ? Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.08) : Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.04)
+                    radius: headerRoot.dims.elementRadius
+                    color: dateBtn.hovered
+                        ? headerRoot.colors.onSurface.alpha(0.08)
+                        : headerRoot.colors.onSurface.alpha(0.04)
                     Behavior on color {
                         ColorAnimation {
                             duration: 150
@@ -344,10 +354,10 @@ HeaderCard {
 
                 contentItem: Text {
                     text: parent.text
-                    font.family: typo.bodyFont
+                    font.family: headerRoot.typo.bodyFont
                     font.pixelSize: 12
                     font.weight: Font.Medium
-                    color: colors.onSurface
+                    color: headerRoot.colors.onSurface
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     opacity: 0.8
@@ -361,8 +371,7 @@ HeaderCard {
                 checkable: true
 
                 Layout.preferredHeight: 36
-                Layout.preferredWidth: checked ? 100 : 90
-                // May shrink with the menu width.
+                // Width follows the translated label instead of a fixed value.
                 Layout.minimumWidth: 0
 
                 // Button Animations
@@ -372,17 +381,12 @@ HeaderCard {
                         duration: 100
                     }
                 }
-                Behavior on Layout.preferredWidth {
-                    NumberAnimation {
-                        duration: 200
-                    }
-                }
 
                 background: Rectangle {
-                    radius: dims.elementRadius
-                    color: urgentBtn.checked ? colors.error : "transparent"
+                    radius: headerRoot.dims.elementRadius
+                    color: urgentBtn.checked ? headerRoot.colors.error : "transparent"
                     border.width: urgentBtn.checked ? 0 : 1.5
-                    border.color: urgentBtn.checked ? colors.error : colors.onSurfaceVariant
+                    border.color: urgentBtn.checked ? headerRoot.colors.error : headerRoot.colors.onSurfaceVariant
 
                     Behavior on color {
                         ColorAnimation {
@@ -407,7 +411,7 @@ HeaderCard {
                     Text {
                         text: urgentBtn.checked ? "🔥" : "🏳️"
                         font.pixelSize: 14
-                        color: urgentBtn.checked ? colors.onError : colors.onSurfaceVariant
+                        color: urgentBtn.checked ? headerRoot.colors.onError : headerRoot.colors.onSurfaceVariant
                         Layout.leftMargin: 6
 
                         rotation: urgentBtn.checked ? 0 : -15
@@ -420,12 +424,12 @@ HeaderCard {
                     }
 
                     Text {
-                        text: urgentBtn.checked ? "URGENT" : "Normal"
-                        font.family: typo.bodyFont
+                        text: urgentBtn.checked ? qsTr("URGENT") : qsTr("Normal")
+                        font.family: headerRoot.typo.bodyFont
                         font.pixelSize: 12
                         font.bold: true
                         font.capitalization: Font.AllUppercase
-                        color: urgentBtn.checked ? colors.onError : colors.onSurfaceVariant
+                        color: urgentBtn.checked ? headerRoot.colors.onError : headerRoot.colors.onSurfaceVariant
                         Layout.rightMargin: 6
                         elide: Text.ElideRight
                     }
@@ -447,19 +451,26 @@ HeaderCard {
 
                 Layout.preferredHeight: 34
                 Layout.preferredWidth: 34
+                enabled: taskInput.text.trim() !== ""
+                Accessible.name: qsTr("Add task")
 
                 onClicked: headerRoot.submitNewTask()
 
                 background: Rectangle {
-                    radius: dims.elementRadius
-                    color: addTaskBtn.pressed ? Qt.darker(colors.primary, 1.1) : colors.primary
-                    layer.enabled: true
+                    radius: headerRoot.dims.elementRadius
+                    color: !addTaskBtn.enabled
+                        ? headerRoot.colors.onSurface.alpha(0.12)
+                        : addTaskBtn.pressed
+                            ? Qt.darker(headerRoot.colors.primary, 1.1)
+                            : headerRoot.colors.primary
                 }
 
                 contentItem: Text {
                     text: "➤"
                     font.pixelSize: 16
-                    color: colors.onPrimary
+                    color: addTaskBtn.enabled
+                        ? headerRoot.colors.onPrimary
+                        : headerRoot.colors.onSurface.alpha(0.38)
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     bottomPadding: 2
@@ -486,18 +497,19 @@ HeaderCard {
                 Layout.preferredHeight: 30
                 Layout.preferredWidth: 30
                 flat: true
+                Accessible.name: qsTr("Details")
 
                 onClicked: headerRoot.toggleNotes()
 
                 background: Rectangle {
-                    radius: dims.elementRadius
+                    radius: headerRoot.dims.elementRadius
                     color: headerRoot.notesOpen
-                        ? Qt.rgba(colors.primary.r, colors.primary.g, colors.primary.b, 0.18)
+                        ? headerRoot.colors.primary.alpha(0.18)
                         : notesBtn.hovered
-                            ? Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.08)
+                            ? headerRoot.colors.onSurface.alpha(0.08)
                             : "transparent"
                     border.width: headerRoot.notesOpen ? 1 : 0
-                    border.color: colors.primary
+                    border.color: headerRoot.colors.primary
 
                     Behavior on color {
                         ColorAnimation {
@@ -509,7 +521,7 @@ HeaderCard {
                 contentItem: Text {
                     text: "📝"
                     font.pixelSize: 14
-                    color: headerRoot.notesOpen ? colors.primary : colors.onSurfaceVariant
+                    color: headerRoot.notesOpen ? headerRoot.colors.primary : headerRoot.colors.onSurfaceVariant
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -526,18 +538,19 @@ HeaderCard {
                 Layout.preferredHeight: 30
                 Layout.preferredWidth: 30
                 flat: true
+                Accessible.name: qsTr("Preview")
 
                 onClicked: headerRoot.togglePreview()
 
                 background: Rectangle {
-                    radius: dims.elementRadius
+                    radius: headerRoot.dims.elementRadius
                     color: headerRoot.previewEnabled
-                        ? Qt.rgba(colors.primary.r, colors.primary.g, colors.primary.b, 0.18)
+                        ? headerRoot.colors.primary.alpha(0.18)
                         : previewBtn.hovered
-                            ? Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.08)
+                            ? headerRoot.colors.onSurface.alpha(0.08)
                             : "transparent"
                     border.width: headerRoot.previewEnabled ? 1 : 0
-                    border.color: colors.primary
+                    border.color: headerRoot.colors.primary
 
                     Behavior on color {
                         ColorAnimation {
@@ -549,7 +562,7 @@ HeaderCard {
                 contentItem: Text {
                     text: "👁"
                     font.pixelSize: 14
-                    color: headerRoot.previewEnabled ? colors.primary : colors.onSurfaceVariant
+                    color: headerRoot.previewEnabled ? headerRoot.colors.primary : headerRoot.colors.onSurfaceVariant
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
