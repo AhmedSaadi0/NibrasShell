@@ -27,6 +27,8 @@ Singleton {
     property color bgColor2: ThemeManager.selectedTheme.colors.secondary
     property color fgColor: ThemeManager.selectedTheme.colors.onPrimary
     property var tagsModel: []
+    // مصدر الوسوم الحالية (يبقى بعد انتهاء المهلة لأن الوسوم تبقى مرئية)
+    property string tagsSource: ""
 
     Timer {
         id: resetTimer
@@ -65,6 +67,7 @@ Singleton {
             root.bgColor2 = bgColor2;
             root.fgColor = fgColor;
             root.tagsModel = tags;
+            root.tagsSource = source;
 
             if (priority > C.TRANSIENT) {
                 changeHeight = changeH ? changeH : true;

@@ -36,6 +36,14 @@ Singleton {
 
     function _logOutgoingRequest(requestId, args, fullCmd) {
         console.info(`[AiService] [Queue: ${_queue.length}] Preparing request: ${requestId}`);
+
+        // طباعة البيانات الفعلية المرسلة للذكاء الاصطناعي (كما هي)
+        const payload = _extractMessageArg(args);
+        if (payload) {
+            const maxLen = 3000;
+            const shown = payload.length > maxLen ? payload.slice(0, maxLen) + "\n... [truncated]" : payload;
+            console.info(`[AiService] --> PAYLOAD for '${requestId}' (${payload.length} chars):\n${shown}`);
+        }
     }
 
     // =========================================================
