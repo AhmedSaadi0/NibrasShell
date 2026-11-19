@@ -21,6 +21,10 @@ Item {
     readonly property int topAppBarHeight: 64
     property alias headerContent: headerContainer.data
 
+    // The vertical scroller of the menu body. Exposed so child views can
+    // scroll a specific item into view.
+    readonly property alias contentFlickable: scrollArea
+
     signal primaryActionTriggered
     signal menuActionTriggered(int index, var action)
 
@@ -72,12 +76,6 @@ Item {
             }
         }
 
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 200
-                easing.type: Easing.OutCubic
-            }
-        }
     }
 
     // ─── Flickable يبدأ من تحت TopAppBar ─────────────────────────

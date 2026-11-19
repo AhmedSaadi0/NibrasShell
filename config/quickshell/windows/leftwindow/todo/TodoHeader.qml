@@ -12,11 +12,19 @@ HeaderCard {
     id: headerRoot
 
     // --- Signals ---
-    signal addTask(string title, bool urgent)
+    signal addTask(string title, bool urgent, string notes)
     signal openCalendar
 
     // --- Properties ---
-    property date selectedDate
+    property date selectedDate: new Date()
+
+    // Height of the page the header lives in. The editor grows with its
+    // content but never uses more than its share of that space.
+    property int availableHeight: 0
+
+    // Toggles
+    property bool notesOpen: false
+    property bool previewEnabled: false
 
     // Theme Helpers
     readonly property var colors: ThemeManager.selectedTheme.colors
@@ -25,55 +33,312 @@ HeaderCard {
 
     // --- Layout Settings ---
     Layout.fillWidth: true
-    // spacing: dims.spacingLarge
+
+    // --- Input sizing ---
+    // The editor follows its content: a short title keeps the field compact,
+    // a long one grows until it reaches its share of the available space.
+    // Beyond that the text scrolls inside the field instead of pushing the
+    // whole menu down.
+    //
+    // The minimum is three lines (the field is a multi line editor, Enter
+    // adds a line instead of sending the task).
+    readonly property int minInputHeight: 78
+    readonly property int maxInputHeight: availableHeight > 0
+        ? Math.max(140, Math.min(400, Math.round(availableHeight * 0.40)))
+        : 200
+    readonly property int maxNotesHeight: availableHeight > 0
+        ? Math.max(100, Math.min(260, Math.round(availableHeight * 0.25)))
+        : 190
+
+    // --- Toggle animations ---
+    // Animations are only used for discrete toggles (notes / preview).
+    // While typing the heights are updated immediately, animating them would
+    // fight the layout and make the text cursor jitter.
+    property real notesExpand: notesOpen ? 1 : 0
+    property real previewMix: previewEnabled ? 1 : 0
+
+    Behavior on notesExpand {
+        NumberAnimation {
+            duration: 180
+            easing.type: Easing.OutCubic
+        }
+    }
+    Behavior on previewMix {
+        NumberAnimation {
+            duration: 180
+            easing.type: Easing.InOutQuad
+        }
+    }
 
     // --- Functions ---
-    // دالة لجمع منطق الإضافة من الزر ومن مفتاح Enter
+    // Height the editor needs for its current content, clamped to the
+    // allowed range.
+    //
+    // implicitHeight is the text height plus the field padding, which is
+    // exactly the height the scrollable content needs. paintedHeight only
+    // covers the text itself, so it leaves a permanent gap of padding that
+    // shows up as a scrollbar for text that actually fits.
+    function editorHeight(area, minHeight, maxHeight) {
+        var needed = area.implicitHeight;
+        if (!needed || needed <= 0)
+            needed = area.contentHeight + area.topPadding + area.bottomPadding;
+        return Math.max(minHeight, Math.min(maxHeight, needed));
+    }
+
+    // Shared submit path for the button and Ctrl+Enter.
     function submitNewTask() {
-        if (taskInput.text.trim() !== "") {
-            headerRoot.addTask(taskInput.text, urgentBtn.checked);
-            taskInput.text = "";
-            urgentBtn.checked = false;
+        const title = taskInput.text.trim();
+        if (title === "") {
+            return;
+        }
+        headerRoot.addTask(title, urgentBtn.checked, notesInput.text.trim());
+        taskInput.text = "";
+        notesInput.text = "";
+        urgentBtn.checked = false;
+        headerRoot.notesOpen = false;
+        headerRoot.previewEnabled = false;
+        taskInput.forceActiveFocus();
+    }
+
+    function toggleNotes() {
+        headerRoot.notesOpen = !headerRoot.notesOpen;
+        if (headerRoot.notesOpen) {
+            notesInput.forceActiveFocus();
+        } else {
+            taskInput.forceActiveFocus();
+        }
+    }
+
+    function togglePreview() {
+        headerRoot.previewEnabled = !headerRoot.previewEnabled;
+        if (headerRoot.previewEnabled)
+            previewFlick.forceActiveFocus();
+        else
+            taskInput.forceActiveFocus();
+    }
+
+    // Child controls can take active focus, so Escape is also handled at the
+    // header boundary. Accepted child handlers (the editors and preview) stop
+    // here before reaching this fallback.
+    Keys.onEscapePressed: event => {
+        if (headerRoot.previewEnabled) {
+            headerRoot.previewEnabled = false;
+            taskInput.forceActiveFocus();
+            event.accepted = true;
+        } else if (headerRoot.notesOpen) {
+            headerRoot.notesOpen = false;
+            taskInput.forceActiveFocus();
+            event.accepted = true;
         }
     }
 
     ColumnLayout {
+        id: headerColumn
 
         Layout.fillWidth: true
-        Layout.preferredHeight: 140
+        Layout.minimumWidth: 0
         Layout.leftMargin: 10
         Layout.rightMargin: 10
         Layout.bottomMargin: 10
 
-        spacing: 0
+        spacing: 10
 
-        // Input Area
-        TextArea {
-            id: taskInput
-
+        // --- Editor / Live Markdown Preview ---
+        Item {
+            id: editorStack
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.bottomMargin: 10
+            // The editor grows with its content until it reaches its share of
+            // the available space, then the text scrolls inside the field.
+            // The preview is capped the same way so a long task can never
+            // push the task list out of the menu.
+            Layout.preferredHeight: headerRoot.previewEnabled
+                ? Math.max(headerRoot.minInputHeight, Math.min(headerRoot.maxInputHeight, previewColumn.implicitHeight))
+                : headerRoot.editorHeight(taskInput, headerRoot.minInputHeight, headerRoot.maxInputHeight)
 
-            placeholderText: "Add a new task..."
-            placeholderTextColor: colors.onSurfaceVariant
-            color: colors.onSurface
-            font.family: typo.bodyFont
-            font.pixelSize: 15
-            wrapMode: Text.Wrap
-            background: null
+            // Title Input
+            //
+            // A TextArea is not scrollable on its own, it only scrolls when it
+            // lives directly inside a ScrollView. The ScrollView keeps the
+            // rounded background in place and scrolls the text underneath it.
+            ScrollView {
+                id: taskScroll
+                anchors.fill: parent
+                opacity: 1 - headerRoot.previewMix
+                visible: opacity > 0.01
+                enabled: !headerRoot.previewEnabled
+                clip: true
 
-            // Shift+Enter لسطر جديد، و Enter للإرسال
-            Keys.onReturnPressed: event => {
-                if ((event.modifiers & Qt.ShiftModifier) == 0) {
-                    headerRoot.submitNewTask();
-                    event.accepted = true;
+                // Only the vertical overflow is scrollable, the text always
+                // wraps to the width of the field.
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                TextArea {
+                    id: taskInput
+
+                    placeholderText: qsTr("Add a new task... (markdown supported)")
+                    placeholderTextColor: headerRoot.colors.onSurfaceVariant
+                    color: headerRoot.colors.onSurface
+                    font.family: headerRoot.typo.bodyFont
+                    font.pixelSize: 15
+                    wrapMode: Text.Wrap
+                    selectByMouse: true
+
+                    background: Rectangle {
+                        radius: headerRoot.dims.elementRadius
+                        color: Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.04)
+                        border.width: taskInput.activeFocus ? 1.5 : 1
+                        border.color: taskInput.activeFocus
+                            ? headerRoot.colors.primary
+                            : Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.08)
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 150
+                            }
+                        }
+                    }
+
+                    // Enter / Shift+Enter add a new line, Ctrl+Enter sends the task.
+                    Keys.onPressed: event => {
+                        const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
+                        const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+
+                        if (isReturn && isModifier) {
+                            headerRoot.submitNewTask();
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Escape && headerRoot.previewEnabled) {
+                            headerRoot.togglePreview();
+                            event.accepted = true;
+                        }
+                    }
+                }
+            }
+
+            // Live preview of what the task will look like in the list.
+            //
+            // Declared after the input on purpose: while the preview is open
+            // the input is disabled, and a disabled item on top would swallow
+            // the mouse events instead of letting the preview scroll.
+            Flickable {
+                id: previewFlick
+                anchors.fill: parent
+                visible: headerRoot.previewEnabled
+                opacity: headerRoot.previewMix
+                focus: headerRoot.previewEnabled
+                clip: true
+                interactive: contentHeight > height
+                boundsBehavior: Flickable.StopAtBounds
+                contentWidth: width
+                contentHeight: previewColumn.implicitHeight
+
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
+
+                // taskScroll is disabled in preview mode, so Escape must be
+                // handled on the item that actually has focus here.
+                Keys.onEscapePressed: event => {
+                    if (headerRoot.previewEnabled) {
+                        headerRoot.togglePreview();
+                        event.accepted = true;
+                    }
+                }
+
+                Column {
+                    id: previewColumn
+                    width: previewFlick.width
+                    spacing: 8
+
+                    MarkdownText {
+                        id: titlePreview
+                        width: parent.width
+                        source: taskInput.text
+                        baseFontSize: 15
+                        textColor: headerRoot.colors.onSurface
+                    }
+
+                    MarkdownText {
+                        id: notesPreview
+                        width: parent.width
+                        visible: notesInput.text.trim() !== ""
+                        source: notesInput.text
+                        baseFontSize: 13
+                        textColor: headerRoot.colors.onSurfaceVariant
+                    }
+                }
+            }
+        }
+
+        // --- Notes (optional, markdown) ---
+        Item {
+            id: notesSection
+            Layout.fillWidth: true
+            Layout.preferredHeight: headerRoot.notesExpand * (headerRoot.editorHeight(notesInput, 40, headerRoot.maxNotesHeight) + 2)
+            visible: headerRoot.notesExpand > 0.01
+            clip: true
+
+            // Same as the title input: the notes scroll inside the field once
+            // they no longer fit.
+            ScrollView {
+                id: notesScroll
+                anchors.fill: parent
+                clip: true
+
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                TextArea {
+                    id: notesInput
+
+                    placeholderText: qsTr("Add details... (markdown supported)")
+                    placeholderTextColor: headerRoot.colors.onSurfaceVariant
+                    color: headerRoot.colors.onSurface
+                    font.family: headerRoot.typo.bodyFont
+                    font.pixelSize: 13
+                    wrapMode: Text.Wrap
+                    selectByMouse: true
+
+                    background: Rectangle {
+                        radius: headerRoot.dims.elementRadius
+                        color: Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.03)
+                        border.width: notesInput.activeFocus ? 1.5 : 1
+                        border.color: notesInput.activeFocus
+                            ? headerRoot.colors.primary
+                            : Qt.rgba(headerRoot.colors.onSurface.r, headerRoot.colors.onSurface.g, headerRoot.colors.onSurface.b, 0.06)
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 150
+                            }
+                        }
+                    }
+
+                    // Enter adds a line, Ctrl+Enter closes the notes.
+                    Keys.onPressed: event => {
+                        const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
+                        const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+
+                        if (isReturn && isModifier) {
+                            headerRoot.notesOpen = false;
+                            taskInput.forceActiveFocus();
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Escape) {
+                            headerRoot.notesOpen = false;
+                            taskInput.forceActiveFocus();
+                            event.accepted = true;
+                        }
+                    }
                 }
             }
         }
 
         RowLayout {
             Layout.fillWidth: true
+            // The row may shrink below the width of its buttons so the menu
+            // can be resized to a small width without the header sticking
+            // out of the card.
+            Layout.minimumWidth: 0
             spacing: 12
 
             // Date Selector
@@ -82,6 +347,8 @@ HeaderCard {
                 text: "📅 " + headerRoot.selectedDate.toLocaleDateString(Qt.locale(), "MMM d")
 
                 Layout.preferredHeight: 34
+                // May shrink with the menu width.
+                Layout.minimumWidth: 0
                 leftPadding: 14
                 rightPadding: 14
                 flat: true
@@ -89,8 +356,10 @@ HeaderCard {
                 onClicked: headerRoot.openCalendar()
 
                 background: Rectangle {
-                    radius: dims.elementRadius
-                    color: dateBtn.hovered ? Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.08) : Qt.rgba(colors.onSurface.r, colors.onSurface.g, colors.onSurface.b, 0.04)
+                    radius: headerRoot.dims.elementRadius
+                    color: dateBtn.hovered
+                        ? headerRoot.colors.onSurface.alpha(0.08)
+                        : headerRoot.colors.onSurface.alpha(0.04)
                     Behavior on color {
                         ColorAnimation {
                             duration: 150
@@ -100,13 +369,14 @@ HeaderCard {
 
                 contentItem: Text {
                     text: parent.text
-                    font.family: typo.bodyFont
+                    font.family: headerRoot.typo.bodyFont
                     font.pixelSize: 12
                     font.weight: Font.Medium
-                    color: colors.onSurface
+                    color: headerRoot.colors.onSurface
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     opacity: 0.8
+                    elide: Text.ElideRight
                 }
             }
 
@@ -116,7 +386,8 @@ HeaderCard {
                 checkable: true
 
                 Layout.preferredHeight: 36
-                Layout.preferredWidth: checked ? 100 : 90
+                // Width follows the translated label instead of a fixed value.
+                Layout.minimumWidth: 0
 
                 // Button Animations
                 scale: pressed ? 0.95 : 1.0
@@ -125,17 +396,12 @@ HeaderCard {
                         duration: 100
                     }
                 }
-                Behavior on Layout.preferredWidth {
-                    NumberAnimation {
-                        duration: 200
-                    }
-                }
 
                 background: Rectangle {
-                    radius: dims.elementRadius
-                    color: urgentBtn.checked ? colors.error : "transparent"
+                    radius: headerRoot.dims.elementRadius
+                    color: urgentBtn.checked ? headerRoot.colors.error : "transparent"
                     border.width: urgentBtn.checked ? 0 : 1.5
-                    border.color: urgentBtn.checked ? colors.error : colors.onSurfaceVariant
+                    border.color: urgentBtn.checked ? headerRoot.colors.error : headerRoot.colors.onSurfaceVariant
 
                     Behavior on color {
                         ColorAnimation {
@@ -150,14 +416,18 @@ HeaderCard {
                 }
 
                 contentItem: RowLayout {
-                    anchors.centerIn: parent
+                    anchors.fill: parent
                     spacing: 8
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
 
                     Text {
                         text: urgentBtn.checked ? "🔥" : "🏳️"
                         font.pixelSize: 14
-                        color: urgentBtn.checked ? colors.onError : colors.onSurfaceVariant
-                        Layout.leftMargin: 10
+                        color: urgentBtn.checked ? headerRoot.colors.onError : headerRoot.colors.onSurfaceVariant
+                        Layout.leftMargin: 6
 
                         rotation: urgentBtn.checked ? 0 : -15
                         Behavior on rotation {
@@ -169,13 +439,18 @@ HeaderCard {
                     }
 
                     Text {
-                        text: urgentBtn.checked ? "URGENT" : "Normal"
-                        font.family: typo.bodyFont
+                        text: urgentBtn.checked ? qsTr("URGENT") : qsTr("Normal")
+                        font.family: headerRoot.typo.bodyFont
                         font.pixelSize: 12
                         font.bold: true
                         font.capitalization: Font.AllUppercase
-                        color: urgentBtn.checked ? colors.onError : colors.onSurfaceVariant
-                        Layout.rightMargin: 5
+                        color: urgentBtn.checked ? headerRoot.colors.onError : headerRoot.colors.onSurfaceVariant
+                        Layout.rightMargin: 6
+                        elide: Text.ElideRight
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
                     }
                 }
             }
@@ -191,27 +466,139 @@ HeaderCard {
 
                 Layout.preferredHeight: 34
                 Layout.preferredWidth: 34
+                enabled: taskInput.text.trim() !== ""
+                Accessible.name: qsTr("Add task")
 
                 onClicked: headerRoot.submitNewTask()
 
                 background: Rectangle {
-                    radius: dims.elementRadius
-                    color: addTaskBtn.pressed ? Qt.darker(colors.primary, 1.1) : colors.primary
-                    layer.enabled: true
+                    radius: headerRoot.dims.elementRadius
+                    color: !addTaskBtn.enabled
+                        ? headerRoot.colors.onSurface.alpha(0.12)
+                        : addTaskBtn.pressed
+                            ? Qt.darker(headerRoot.colors.primary, 1.1)
+                            : headerRoot.colors.primary
                 }
 
                 contentItem: Text {
                     text: "➤"
                     font.pixelSize: 16
-                    color: colors.onPrimary
+                    color: addTaskBtn.enabled
+                        ? headerRoot.colors.onPrimary
+                        : headerRoot.colors.onSurface.alpha(0.38)
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     bottomPadding: 2
                 }
 
                 ToolTip.visible: hovered
-                ToolTip.text: "Add Task"
+                ToolTip.text: qsTr("Add Task (Ctrl+Enter)")
                 ToolTip.delay: 500
+            }
+        }
+
+        // Second row: the optional tools. They live on their own row so the
+        // main row stays narrow and the menu can be resized to a small width.
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.topMargin: -4
+            spacing: 6
+
+            // Notes Toggle
+            Button {
+                id: notesBtn
+
+                Layout.preferredHeight: 30
+                Layout.preferredWidth: 30
+                flat: true
+                Accessible.name: qsTr("Details")
+
+                onClicked: headerRoot.toggleNotes()
+
+                background: Rectangle {
+                    radius: headerRoot.dims.elementRadius
+                    color: headerRoot.notesOpen
+                        ? headerRoot.colors.primary.alpha(0.18)
+                        : notesBtn.hovered
+                            ? headerRoot.colors.onSurface.alpha(0.08)
+                            : "transparent"
+                    border.width: headerRoot.notesOpen ? 1 : 0
+                    border.color: headerRoot.colors.primary
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 150
+                        }
+                    }
+                }
+
+                contentItem: Text {
+                    text: "📝"
+                    font.pixelSize: 14
+                    color: headerRoot.notesOpen ? headerRoot.colors.primary : headerRoot.colors.onSurfaceVariant
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Details")
+                ToolTip.delay: 500
+            }
+
+            // Live Preview Toggle
+            Button {
+                id: previewBtn
+
+                Layout.preferredHeight: 30
+                Layout.preferredWidth: 30
+                flat: true
+                Accessible.name: qsTr("Preview")
+
+                onClicked: headerRoot.togglePreview()
+
+                background: Rectangle {
+                    radius: headerRoot.dims.elementRadius
+                    color: headerRoot.previewEnabled
+                        ? headerRoot.colors.primary.alpha(0.18)
+                        : previewBtn.hovered
+                            ? headerRoot.colors.onSurface.alpha(0.08)
+                            : "transparent"
+                    border.width: headerRoot.previewEnabled ? 1 : 0
+                    border.color: headerRoot.colors.primary
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 150
+                        }
+                    }
+                }
+
+                contentItem: Text {
+                    text: "👁"
+                    font.pixelSize: 14
+                    color: headerRoot.previewEnabled ? headerRoot.colors.primary : headerRoot.colors.onSurfaceVariant
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Preview")
+                ToolTip.delay: 500
+            }
+
+            // Shortcut hint (lives in this row so the header height never
+            // changes while typing)
+            Text {
+                Layout.fillWidth: true
+                Layout.leftMargin: 4
+                horizontalAlignment: Text.AlignRight
+                text: qsTr("Ctrl+Enter to add")
+                font.family: headerRoot.typo.bodyFont
+                font.pixelSize: 10
+                color: headerRoot.colors.onSurfaceVariant
+                opacity: 0.55
+                elide: Text.ElideRight
             }
         }
     }

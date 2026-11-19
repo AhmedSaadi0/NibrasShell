@@ -51,7 +51,13 @@
     "music_ai_api_key": "Enter Gemini API Key For Music Analytics:",
     "weather_ai_api_key": "Enter Gemini API Key For Weather Analytics:",
     "ai_preferred_language": "Enter Preferred AI Response Language:",
-    "deps_success_msg": "Dependencies installed successfully. You are now ready to proceed with installing NibrasShell."
+    "deps_success_msg": "Dependencies installed successfully. You are now ready to proceed with installing NibrasShell.",
+    "enabling_vnstat": "Enabling vnstat service...",
+    "vnstat_service_failed": "Could not enable the vnstat service. You can enable it manually later.",
+    "vnstat_service_dir_missing": "vnstat runit service directory not found (/etc/sv/vnstatd).",
+    "setting_nethogs_caps": "Setting capabilities for nethogs...",
+    "nethogs_not_found": "nethogs not found, skipping capability setup.",
+    "caps_failed": "Could not set capabilities for nethogs. You can run it manually later."
   },
   "ar": {
     "choose_lang": "اختر لغتك:",
@@ -105,7 +111,13 @@
     "music_ai_api_key": "أدخل مفتاح Gemini API لتحليل الموسيقى: ",
     "weather_ai_api_key": "أدخل مفتاح Gemini API لتحليل الطقس: ",
     "ai_preferred_language": "أدخل اللغة المفضلة لاستجابة الذكاء الاصطناعي:",
-    "deps_success_msg": "تم تثبيت المتطلبات بنجاح. يمكنك الآن المتابعة لتثبيت واجهة NibrasShell."
+    "deps_success_msg": "تم تثبيت المتطلبات بنجاح. يمكنك الآن المتابعة لتثبيت واجهة NibrasShell.",
+    "enabling_vnstat": "جاري تفعيل خدمة vnstat...",
+    "vnstat_service_failed": "تعذر تفعيل خدمة vnstat. يمكنك تفعيلها يدوياً لاحقاً.",
+    "vnstat_service_dir_missing": "لم يتم العثور على مجلد خدمة runit الخاصة بـ vnstat (/etc/sv/vnstatd).",
+    "setting_nethogs_caps": "جاري ضبط صلاحيات nethogs...",
+    "nethogs_not_found": "لم يتم العثور على nethogs، سيتم تخطي ضبط الصلاحيات.",
+    "caps_failed": "تعذر ضبط صلاحيات nethogs. يمكنك تشغيله يدوياً لاحقاً."
   },
   "cs": {
     "choose_lang": "Vyberte si jazyk:",
@@ -159,6 +171,12 @@
     "music_ai_api_key": "Zadejte Gemini API klíč pro analýzu hudby: ",
     "weather_ai_api_key": "Zadejte Gemini API klíč pro analýzu počasí: ",
     "ai_preferred_language": "Zadejte preferovaný jazyk odpovědi AI:",
-    "deps_success_msg": "Závislosti byly úspěšně nainstalovány. Nyní můžete pokračovat v instalaci NibrasShell."
+    "deps_success_msg": "Závislosti byly úspěšně nainstalovány. Nyní můžete pokračovat v instalaci NibrasShell.",
+    "enabling_vnstat": "Povoluji službu vnstat...",
+    "vnstat_service_failed": "Nepodařilo se povolit službu vnstat. Můžete ji povolit ručně později.",
+    "vnstat_service_dir_missing": "Adresář služby runit vnstat nebyl nalezen (/etc/sv/vnstatd).",
+    "setting_nethogs_caps": "Nastavuji oprávnění pro nethogs...",
+    "nethogs_not_found": "nethogs nebyl nalezen, přeskočuji nastavení oprávnění.",
+    "caps_failed": "Nepodařilo se nastavit oprávnění pro nethogs. Můžete jej spustit ručně později."
   }
 }

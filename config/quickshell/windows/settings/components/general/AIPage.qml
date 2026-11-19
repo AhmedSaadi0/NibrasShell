@@ -50,6 +50,7 @@ BaseGeneralSettings {
 
     // Memory & Context
     property int localWeatherHistoryTurns: 10
+    property int localMusicHistoryTurns: 3
 
     // Toggle Visibility
     property bool showKeys: false
@@ -76,6 +77,7 @@ BaseGeneralSettings {
         localTodoPersona = App.todoPersona || defaultTodoPersona;
 
         localWeatherHistoryTurns = App.weatherAiHistoryTurns !== undefined ? App.weatherAiHistoryTurns : 10;
+        localMusicHistoryTurns = App.musicAiHistoryTurns !== undefined ? App.musicAiHistoryTurns : 3;
 
         // إذا لم تكن هناك موديلات محملة، نحاول التحديث
         if (App.availableGeminiWeatherModels.length === 0)
@@ -100,7 +102,8 @@ BaseGeneralSettings {
             "musicPersona": localMusicPersona,
             "systemPersona": localSystemPersona,
             "todoPersona": localTodoPersona,
-            "weatherAiHistoryTurns": localWeatherHistoryTurns
+            "weatherAiHistoryTurns": localWeatherHistoryTurns,
+            "musicAiHistoryTurns": localMusicHistoryTurns
         };
     }
 
@@ -350,7 +353,7 @@ BaseGeneralSettings {
 
             SectionCard {
                 title: qsTr("Memory & Context")
-                subtitle: qsTr("How many past turns the Weather AI keeps in mind. 0 disables memory; higher values give it more continuity but cost more tokens.")
+                subtitle: qsTr("How many past turns the Weather and Music AIs keep in mind. 0 disables memory; higher values give them more continuity but cost more tokens.")
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -370,6 +373,20 @@ BaseGeneralSettings {
                         }
                     }
 
+                    SliderWithLabel {
+                        id: musicMemorySlider
+                        Layout.fillWidth: true
+                        label: qsTr("Music AI conversation turns")
+                        from: 0
+                        to: 10
+                        stepSize: 1
+                        decimals: 0
+                        value: page.localMusicHistoryTurns
+                        onEditingFinished: finalValue => {
+                            page.localMusicHistoryTurns = Math.round(finalValue);
+                        }
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         Item {
@@ -380,7 +397,10 @@ BaseGeneralSettings {
                             Layout.preferredHeight: 24
                             Layout.preferredWidth: 140
                             flat: true
-                            onClicked: page.localWeatherHistoryTurns = 10
+                            onClicked: {
+                                page.localWeatherHistoryTurns = 10;
+                                page.localMusicHistoryTurns = 3;
+                            }
                         }
                     }
                 }

@@ -70,6 +70,7 @@ Singleton {
     property alias musicAiModel: root.config.musicAiModel
     property alias systemAiModel: root.config.systemAiModel
     property alias weatherAiHistoryTurns: root.config.weatherAiHistoryTurns
+    property alias musicAiHistoryTurns: root.config.musicAiHistoryTurns
 
     // Hardware configs
     property alias enableHighCpuAlert: root.config.enableHighCpuAlert

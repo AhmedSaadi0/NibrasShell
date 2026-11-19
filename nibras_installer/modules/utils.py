@@ -15,12 +15,14 @@ def run_command(command, exit_on_fail=True):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
+        return True
     except subprocess.CalledProcessError as e:
         print(
             f"{RED}Error executing command: {command}\n{e.stderr.decode()}{NC}"
         )
         if exit_on_fail:
             sys.exit(1)
+        return False
 
 
 def run_command_verbose(command):

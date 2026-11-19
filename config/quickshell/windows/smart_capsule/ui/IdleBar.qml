@@ -640,6 +640,10 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
 
                                 onClicked: {
+                                    // إشعار الموسيقى بأن المستخدم فتح اقتراح الذكاء الاصطناعي
+                                    if (CapsuleManager.tagsSource === C.SRC_MUSIC)
+                                        MusicService.markSuggestionOpened(modelData);
+
                                     var searchQuery = encodeURIComponent(modelData);
                                     var youtubeUrl = "https://www.youtube.com/results?search_query=" + searchQuery;
 

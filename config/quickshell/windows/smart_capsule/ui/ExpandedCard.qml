@@ -322,6 +322,10 @@ Item {
                                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
                                     onClicked: {
+                                        // إشعار الموسيقى بأن المستخدم فتح اقتراح الذكاء الاصطناعي
+                                        if (root.currentTab === "media")
+                                            MusicService.markSuggestionOpened(modelData);
+
                                         Qt.openUrlExternally("https://www.youtube.com/results?search_query=" + encodeURIComponent(modelData));
                                     }
                                 }

@@ -75,7 +75,7 @@ hl.bind(
 )
 hl.bind(mainMod .. " + " .. shiftKey .. " + T", hl.dsp.exec_cmd("Telegram"), { description = "Open Telegram" })
 hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("strawberry"), { description = "Open Strawberry" })
-hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("easyeffects"), { description = "Open EasyEffects" })
+hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("easyeffects -r"), { description = "Open EasyEffects" })
 hl.bind(mainMod .. " + X", hl.dsp.exec_cmd("hyprpicker -a"), { description = "Open Hyprpicker" })
 hl.bind("Print", hl.dsp.exec_cmd("hyprshot -m region"), { description = "Take screenshot (region)" })
 hl.bind(
