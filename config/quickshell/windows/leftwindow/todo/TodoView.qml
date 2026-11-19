@@ -291,6 +291,7 @@ BaseMenuView {
                                         source: model.title || ""
                                         baseFontSize: root.typo.small
                                         textColor: root.colors.onSurface
+                                        defaultCursorShape: Qt.PointingHandCursor
                                         Layout.fillWidth: true
                                     }
 

@@ -34,6 +34,7 @@ Item {
     property int baseFontSize: typo ? typo.medium : 14
     property color textColor: colors ? colors.onSurface : palette.text
     property bool strikeThrough: false
+    property int defaultCursorShape: Qt.ArrowCursor
 
     // --- Fast path -------------------------------------------------------
     readonly property bool plainText: !Markdown.hasMarkdown(source)
@@ -74,11 +75,17 @@ Item {
                 Qt.openUrlExternally(link);
         }
 
-        HoverHandler {
-            id: linkHover
-            cursorShape: contentText.hoveredLink !== ""
+        // A pass-through MouseArea is more reliable than HoverHandler for
+        // cursor changes on Wayland/Quickshell, especially inside other
+        // pointer handlers. NoButton keeps linkActivated working.
+        MouseArea {
+            id: linkCursorArea
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton
+            hoverEnabled: !root.plainText
+            cursorShape: (hoverEnabled && containsMouse && contentText.linkAt(mouseX, mouseY) !== "")
                 ? Qt.PointingHandCursor
-                : Qt.ArrowCursor
+                : root.defaultCursorShape
         }
     }
 }

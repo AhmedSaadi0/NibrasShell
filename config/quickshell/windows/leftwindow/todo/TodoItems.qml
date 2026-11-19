@@ -72,7 +72,7 @@ ListView {
     }
 
     // --- Delegate ---
-    delegate: MouseArea {
+    delegate: Item {
         id: itemRoot
         width: todoList.width
         height: bgRect.height
@@ -81,9 +81,14 @@ ListView {
         // prevents the content from bleeding out during the remove animation.
         clip: true
 
-        hoverEnabled: true
-        propagateComposedEvents: true
-        onClicked: mouse => mouse.accepted = false
+        // HoverHandler avoids stealing pointer events from child links and
+        // buttons, which a delegate-level MouseArea used to do.
+        HoverHandler {
+            id: cardHover
+            acceptedButtons: Qt.NoButton
+        }
+
+        Keys.onPressed: event => itemRoot.handleEditKeys(event)
 
         property bool isEditing: false
         property bool isEditingNotes: false
@@ -168,6 +173,25 @@ ListView {
             cancelNotes();
         }
 
+        // Key events from any focused child (buttons, ScrollViews, TextAreas)
+        // bubble up to the delegate, so Escape/Ctrl+Enter keep working after
+        // focus moves away from a TextArea.
+        function handleEditKeys(event) {
+            if (!isEditing && !isEditingNotes)
+                return;
+
+            const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
+            const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
+
+            if (event.key === Qt.Key_Escape) {
+                cancelAll();
+                event.accepted = true;
+            } else if (isReturn && isModifier) {
+                saveAll();
+                event.accepted = true;
+            }
+        }
+
         // Externally completed tasks (e.g. from Due Now) must not leave stale
         // editors open on this delegate.
         onTaskCompletedChanged: {
@@ -194,7 +218,7 @@ ListView {
             color: {
                 if (taskCompleted)
                     return Qt.rgba(colors.primaryContainer.r, colors.primaryContainer.g, colors.primaryContainer.b, 0.5);
-                if (itemRoot.containsMouse || isEditing)
+                if (cardHover.hovered || isEditing)
                     return Qt.lighter(colors.surfaceContainerHigh, 1.2);
                 return colors.surfaceContainer;
             }
@@ -324,18 +348,8 @@ ListView {
                                 radius: dims.shapeExtraSmall
                             }
 
-                            Keys.onPressed: event => {
-                                const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
-                                const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
-
-                                if (isReturn && isModifier) {
-                                    itemRoot.saveAll();
-                                    event.accepted = true;
-                                } else if (event.key === Qt.Key_Escape) {
-                                    itemRoot.cancelAll();
-                                    event.accepted = true;
-                                }
-                            }
+                            // Intercept before TextArea can insert a newline.
+                            Keys.onPressed: event => itemRoot.handleEditKeys(event)
                         }
                     }
                 }
@@ -379,18 +393,8 @@ ListView {
                             radius: dims.shapeExtraSmall
                         }
 
-                        Keys.onPressed: event => {
-                            const isReturn = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
-                            const isModifier = (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) !== 0;
-
-                            if (isReturn && isModifier) {
-                                itemRoot.saveAll();
-                                event.accepted = true;
-                            } else if (event.key === Qt.Key_Escape) {
-                                itemRoot.cancelAll();
-                                event.accepted = true;
-                            }
-                        }
+                        // Intercept before TextArea can insert a newline.
+                        Keys.onPressed: event => itemRoot.handleEditKeys(event)
                     }
                 }
 
@@ -529,7 +533,7 @@ ListView {
                         enabled: opacity > 0.1
 
                         flat: true
-                        opacity: (model.notes || "") !== "" ? 1 : (isEditingNotes || itemRoot.containsMouse || notesBtnItem.hovered ? 1 : 0)
+                        opacity: (model.notes || "") !== "" ? 1 : (isEditingNotes || cardHover.hovered || notesBtnItem.hovered ? 1 : 0)
                         Behavior on opacity {
                             NumberAnimation {
                                 duration: 200
@@ -570,7 +574,7 @@ ListView {
                         enabled: opacity > 0.1
 
                         flat: true
-                        opacity: isEditing || itemRoot.containsMouse || editBtn.hovered ? 1 : 0
+                        opacity: isEditing || cardHover.hovered || editBtn.hovered ? 1 : 0
                         Behavior on opacity {
                             NumberAnimation {
                                 duration: 200
@@ -611,7 +615,7 @@ ListView {
                         enabled: opacity > 0.1
 
                         flat: true
-                        opacity: itemRoot.containsMouse || deleteBtn.hovered ? 1 : 0
+                        opacity: cardHover.hovered || deleteBtn.hovered ? 1 : 0
                         Behavior on opacity {
                             NumberAnimation {
                                 duration: 200

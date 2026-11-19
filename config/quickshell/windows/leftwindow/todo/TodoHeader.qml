@@ -117,6 +117,21 @@ HeaderCard {
             taskInput.forceActiveFocus();
     }
 
+    // Child controls can take active focus, so Escape is also handled at the
+    // header boundary. Accepted child handlers (the editors and preview) stop
+    // here before reaching this fallback.
+    Keys.onEscapePressed: event => {
+        if (headerRoot.previewEnabled) {
+            headerRoot.previewEnabled = false;
+            taskInput.forceActiveFocus();
+            event.accepted = true;
+        } else if (headerRoot.notesOpen) {
+            headerRoot.notesOpen = false;
+            taskInput.forceActiveFocus();
+            event.accepted = true;
+        }
+    }
+
     ColumnLayout {
         id: headerColumn
 
