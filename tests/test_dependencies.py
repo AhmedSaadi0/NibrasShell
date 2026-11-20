@@ -243,3 +243,4 @@ def test_void_packages_include_libcap_progs(monkeypatch):
     assert "libcap-progs" in pkg_cmd
     # حزمة libcap في فود تحتوي المكتبة فقط، الأدوات في libcap-progs
     assert "libcap " not in pkg_cmd
+    assert "matugen" in pkg_cmd

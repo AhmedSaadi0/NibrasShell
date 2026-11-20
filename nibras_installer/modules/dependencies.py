@@ -101,7 +101,7 @@ def install_void(install_optional):
     )
     run_command_verbose("sudo xbps-install -S")
 
-    required_pkgs = "hyprland quickshell plasma-nm playerctl polkit-kde-agent dolphin konsole brightnessctl gammastep wl-clipboard sysstat bc sassc systemsettings acpi fish-shell gnome-bluetooth power-profiles-daemon lm_sensors libcap-progs vnstat nethogs xz jq python3-devel dbus-devel glib-devel cmake nerd-fonts"
+    required_pkgs = "hyprland quickshell plasma-nm playerctl polkit-kde-agent dolphin konsole brightnessctl gammastep wl-clipboard sysstat bc sassc systemsettings acpi fish-shell gnome-bluetooth power-profiles-daemon lm_sensors matugen libcap-progs vnstat nethogs xz jq python3-devel dbus-devel glib-devel cmake nerd-fonts"
     optional_pkgs = "strawberry easyeffects blueman telegram-desktop kvantum firefox"
 
     command = f"sudo xbps-install -y {required_pkgs}"
