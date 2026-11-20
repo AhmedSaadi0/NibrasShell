@@ -6,6 +6,13 @@ import "root:/utils" as Utils
 Item {
     id: root
 
+    signal m3Applied()
+    signal m3Failed(string reason)
+
+    property var _pendingM3Command: null
+    property string _m3KonsoleProfile: ""
+    property string _m3Stderr: ""
+
     // دالة لتطبيق الثيم العام (GTK/Qt)
     function applySystemTheme(settings, colors, typography) {
         if (!settings)
@@ -15,7 +22,8 @@ Item {
         _dispatch("Plasma Color", Utils.Helper.changePlasmaColor(settings.plasmaColorScheme));
         _dispatch("Plasma Icons", Utils.Helper.changePlasmaIcons(settings.themeIcons));
         _dispatch("Konsole Profile", Utils.Helper.changeKonsoleProfile(settings.konsoleProfile));
-        _dispatch("Konsole Running Sessions Profile", Utils.Helper.applyKonsoleProfileToRunningSessions(settings.konsoleProfile.replace(".profile", "")));
+        if (!settings.enableDynamicColoring)
+            _dispatch("Konsole Running Sessions Profile", Utils.Helper.applyKonsoleProfileToRunningSessions(settings.konsoleProfile.replace(".profile", "")));
         _dispatch("Qt Style", Utils.Helper.changeQtStyle(settings.qtThemeStyle));
         _dispatch("Kvantum Theme", Utils.Helper.changeKvantumTheme(settings.kvantumTheme));
 
@@ -77,7 +85,7 @@ Item {
     }
 
     // دالة منفصلة لتطبيق M3 (تستدعى عند تغير الخلفية)
-    function applyM3(wallpaperPath, themeMode, enabled, scheme, chroma, tone) {
+    function applyM3(wallpaperPath, themeMode, enabled, scheme, contrast, konsoleProfile) {
         if (!enabled)
             return;
 
@@ -91,12 +99,20 @@ Item {
             selectedWallpaperPath: wallpaperPath,
             themeMode: themeMode,
             scheme: scheme,
-            chroma: chroma,
-            tone: tone
+            contrast: contrast
         };
+        const command = Utils.Helper.applyM3PlasmaColor(data);
 
-        console.info("[SystemBridge] Applying M3 on:", wallpaperPath);
-        _dispatch("Apply M3", Utils.Helper.applyM3PlasmaColor(data));
+        root._m3KonsoleProfile = konsoleProfile || "MaterialYouAlt.profile";
+        console.info("[SystemBridge] Applying M3 on:", wallpaperPath, command);
+
+        if (m3Process.running) {
+            root._pendingM3Command = command;
+            return;
+        }
+
+        m3Process.command = command;
+        m3Process.running = true;
     }
 
     // Custom AI-generated Plasma color scheme writer
@@ -131,6 +147,42 @@ Item {
     function _dispatch(desc, cmd) {
         if (cmd)
             App.dispatchCommand(desc, cmd);
+    }
+
+    Process {
+        id: m3Process
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const output = this.text.toString().trim();
+                if (output !== "")
+                    console.info("[M3] " + output);
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                root._m3Stderr = this.text.toString().trim();
+            }
+        }
+        onExited: (exitCode, exitStatus) => {
+            if (exitCode === 0 && root._m3Stderr === "") {
+                const profile = root._m3KonsoleProfile.replace(".profile", "");
+                _dispatch("Konsole M3 Refresh", Utils.Helper.applyKonsoleProfileToRunningSessions(profile));
+                root.m3Applied();
+            } else {
+                const reason = root._m3Stderr || `exit ${exitCode} (${exitStatus})`;
+                console.error("[SystemBridge] M3 failed:", reason);
+                root.m3Failed(reason);
+            }
+
+            root._m3Stderr = "";
+            if (root._pendingM3Command) {
+                const nextCommand = root._pendingM3Command;
+                root._pendingM3Command = null;
+                m3Process.command = nextCommand;
+                m3Process.running = true;
+            }
+        }
     }
 
     Timer {

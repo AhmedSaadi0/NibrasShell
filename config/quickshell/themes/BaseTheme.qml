@@ -153,8 +153,7 @@ PersistentProperties {
     property real _wallpaperBlurStrength: 0.9
 
     property int _dynamicColoringSchemeVariant: 2
-    property real _dynamicColoringChromaMult: 2.5
-    property real _dynamicColoringToneMult: 1
+    property real _dynamicColoringContrast: 0.0
 
     property bool _enableDynamicWallpapers: false
     property int _dynamicWallpapersInterval: 15 * 1000 * 60
@@ -370,8 +369,7 @@ PersistentProperties {
         property alias selectedWallpaperIndex: root._selectedWallpaperIndex
 
         property alias dynamicColoringSchemeVariant: root._dynamicColoringSchemeVariant
-        property alias dynamicColoringChromaMult: root._dynamicColoringChromaMult
-        property alias dynamicColoringToneMult: root._dynamicColoringToneMult
+        property alias dynamicColoringContrast: root._dynamicColoringContrast
     }
 
     // --- Hyprland Configuration ---

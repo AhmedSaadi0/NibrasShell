@@ -58,3 +58,18 @@ hl.config({
 		workspace_swipe_invert = false,
 	},
 })
+
+hl.config({
+	render = {
+		new_render_scheduling = true,
+	},
+	cursor = {
+		-- 2 = auto (disables on multi-GPU Nvidia), 1 = force software, 0 = force hardware
+		-- Try 1 first; if cursor still stutters or duplicates, test 0
+		no_hardware_cursors = 1,
+	},
+	opengl = {
+		-- Reduces frame drops on lower-end/hybrid paths (set true only if flickering appears)
+		nvidia_anti_flicker = false,
+	},
+})

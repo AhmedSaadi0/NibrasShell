@@ -53,6 +53,8 @@ Singleton {
 
     // Feature Signals
     signal wallpaperChanged(string path)
+    signal m3Applied()
+    signal m3Failed(string reason)
     signal unusedCachedOverlayImagesDeleted
     signal creatingOverlayImageStarted
     signal creatingOverlayImageFinished(string newImagePath)
@@ -160,7 +162,7 @@ Singleton {
         onWallpaperReady: path => {
             if (selectedTheme && selectedTheme.systemSettings.enableDynamicColoring) {
                 const settings = selectedTheme.systemSettings;
-                bridgeSystem.applyM3(path, settings.themeMode, true, settings.dynamicColoringSchemeVariant, settings.dynamicColoringChromaMult, settings.dynamicColoringToneMult);
+                bridgeSystem.applyM3(path, settings.themeMode, true, settings.dynamicColoringSchemeVariant, settings.dynamicColoringContrast, settings.konsoleProfile);
             }
             root.wallpaperChanged(path);
         }
@@ -179,6 +181,15 @@ Singleton {
 
     SystemBridge {
         id: bridgeSystem
+        onM3Applied: Qt.callLater(() => {
+            if (selectedTheme)
+                bridgeHyprland.applyConfig(selectedTheme.hyprlandConfiguration);
+            root.m3Applied();
+        })
+        onM3Failed: reason => {
+            console.error("[ThemeManager] M3 failed:", reason);
+            root.m3Failed(reason);
+        }
     }
 
     ThemeSerializer {

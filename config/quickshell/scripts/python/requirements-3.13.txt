@@ -1,7 +1,6 @@
 rembg[gpu]==2.0.69
 pillow==12.0.0
 psutil==7.1.3
-kde-material-you-colors==2.0.0
 google-generativeai==0.8.5
 openai==2.9.0
 json_repair==0.54.3

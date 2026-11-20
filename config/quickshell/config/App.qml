@@ -23,6 +23,7 @@ Singleton {
     readonly property string themeCacheFolderPath: cacheFolderPath + "/themes/"
     readonly property string pythonScriptsPath: mainPath + "/scripts/python"
     readonly property string pythonPath: cacheFolderPath + "/venv/bin/python"
+    readonly property var stdlibPython: ["python3"]
 
     property var availableGeminiMusicModels: []
     property var availableGeminiWeatherModels: []
@@ -294,7 +295,7 @@ Singleton {
             readonly property var systemMonitorCommand: [pythonPath, systemMonitor]
             readonly property var diskUsageCommand: [pythonPath, diskUsage]
 
-            readonly property var dynamicM3Command: [pythonPath, dynamicM3]
+            readonly property var dynamicM3Command: [...stdlibPython, dynamicM3]
             readonly property var scanWallpapersCommand: [pythonPath, scanWallpapers, "--themes_cache_dir", root.themeCacheFolderPath, "--shell_dir", root.mainPath]
             readonly property var rembgOverylayWallpaperCommand: [pythonPath, rembgOverylayWallpaper]
             readonly property var opencvOverylayWallpaperCommand: [pythonPath, opencvOverylayWallpaper]
