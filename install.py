@@ -289,7 +289,7 @@ def install_dependencies(distro, install_optional=False):
         print(YELLOW + "Starting Arch installer" + NC)
         # في آرتش: python هي الحزمة الكاملة وتشمل headers (لا يوجد dev)
         # حالياً python في آرتش هي 3.13
-        required_pkgs = "base-devel quickshell brightnessctl konsole ark dolphin ffmpegthumbs playerctl polkit-kde-agent jq gammastep wl-clipboard cliphist hyprpicker hyprshot-git bc sysstat systemsettings acpi fish kde-material-you-colors plasma5support plasma5-integration plasma-framework5 ttf-fantasque-nerd powerdevil libjpeg6-turbo python-regex copyq python python313"
+        required_pkgs = "base-devel quickshell brightnessctl konsole ark dolphin ffmpegthumbs playerctl polkit-kde-agent jq gammastep wl-clipboard cliphist hyprpicker hyprshot-git bc sysstat systemsettings acpi fish matugen plasma5support plasma5-integration plasma-framework5 ttf-fantasque-nerd powerdevil libjpeg6-turbo python-regex copyq python python313"
         optional_pkgs = "strawberry easyeffects blueman telegram-desktop discord kvantum firefox"
 
         command = f"yay -S --noconfirm {required_pkgs}"

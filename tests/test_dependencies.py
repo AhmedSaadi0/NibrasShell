@@ -224,6 +224,8 @@ def test_arch_packages_include_vnstat_and_nethogs(monkeypatch):
     assert "vnstat" in pkg_cmd
     assert "nethogs" in pkg_cmd
     assert "libcap" in pkg_cmd
+    assert "matugen" in pkg_cmd
+    assert "kde-material-you-colors" not in pkg_cmd
 
 
 def test_void_packages_include_libcap_progs(monkeypatch):

@@ -81,7 +81,7 @@ def install_fedora(install_optional):
 
 def install_arch(install_optional):
     print(YELLOW + "Starting Arch installer" + NC)
-    required_pkgs = "base-devel quickshell brightnessctl network-manager-applet konsole ark dolphin ffmpegthumbs playerctl polkit-kde-agent jq gammastep wl-clipboard cliphist hyprpicker hyprshot-git bc sysstat sassc systemsettings acpi fish kde-material-you-colors plasma5support plasma5-integration plasma-framework5 ttf-jetbrains-mono-nerd ttf-fantasque-nerd powerdevil gnome-bluetooth-3.0 power-profiles-daemon libjpeg6-turbo python-regex python-pillow python-psutil libcap vnstat nethogs python python313"
+    required_pkgs = "base-devel quickshell brightnessctl network-manager-applet konsole ark dolphin ffmpegthumbs playerctl polkit-kde-agent jq gammastep wl-clipboard cliphist hyprpicker hyprshot-git bc sysstat sassc systemsettings acpi fish matugen plasma5support plasma5-integration plasma-framework5 ttf-jetbrains-mono-nerd ttf-fantasque-nerd powerdevil gnome-bluetooth-3.0 power-profiles-daemon libjpeg6-turbo python-regex python-pillow python-psutil libcap vnstat nethogs python python313"
     optional_pkgs = (
         "strawberry easyeffects blueman telegram-desktop discord kvantum firefox"
     )
