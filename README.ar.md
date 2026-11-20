@@ -45,7 +45,7 @@
 
 ## ⚡ التثبيت السريع
 
-للثبيت على Arch أو Fedora أو Nix (سكريبت تلقائي):
+للثبيت على Arch أو Fedora أو Void (سكريبت تلقائي):
 
 ```bash
 git clone --depth 1 https://github.com/AhmedSaadi0/NibrasShell.git

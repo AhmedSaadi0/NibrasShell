@@ -208,6 +208,7 @@ def test_fedora_packages_include_libcap(monkeypatch):
     assert "libcap" in pkg_cmd
     assert "vnstat" in pkg_cmd
     assert "nethogs" in pkg_cmd
+    assert "matugen" in pkg_cmd
 
 
 def test_arch_packages_include_vnstat_and_nethogs(monkeypatch):
