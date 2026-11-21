@@ -220,6 +220,12 @@ QtObject {
         if (!changes || changes.length === 0 || !currentTheme)
             return;
 
+        if (ThemeManager.selectedTheme && ThemeManager.selectedTheme.systemSettings.enableDynamicColoring) {
+            aiError = qsTr("AI color-scheme switching is unavailable while Material You coloring is enabled.");
+            pendingAiChanges = [];
+            return;
+        }
+
         let data = {};
         for (let i = 0; i < changes.length; i++) {
             data[changes[i].key] = changes[i].value;

@@ -224,11 +224,10 @@ inactiveForeground=${fgInactive}
         selectedWallpaperPath,
         themeMode,
         scheme,
-        chroma,
-        tone
+        contrast
     }) {
         const scriptCommand = Config.App.scripts.python.dynamicM3Command;
-        const command = [...scriptCommand, `${selectedWallpaperPath}`, "-m", themeMode, "--scheme", scheme, "--chroma", chroma, "--tone", tone];
+        const command = [...scriptCommand, `${selectedWallpaperPath}`, "-m", themeMode, "--scheme", String(scheme), "--contrast", String(contrast)];
         console.info(command);
         return command;
     }
