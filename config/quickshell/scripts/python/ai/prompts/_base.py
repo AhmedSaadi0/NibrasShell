@@ -23,7 +23,7 @@ OUTPUT RULES:
 
 EMOTION_LIST = (
     "[love, happy, wink, sad, angry, shocked, suspicious, bored, "
-    "listening, thinking, sleeping, confused, dead, focused]"
+    "listening, thinking, sleeping, confused, dead, focused, dead]"
 )
 
 

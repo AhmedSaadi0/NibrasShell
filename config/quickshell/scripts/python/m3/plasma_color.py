@@ -100,7 +100,6 @@ class ColorExporter:
             f"{self.contrast:.2f}",
             "-j",
             "hex",
-            "--dry-run",
         ]
         if self.fallback_color:
             command += ["--fallback-color", self.fallback_color]
@@ -119,7 +118,7 @@ class ColorExporter:
 
     @staticmethod
     def _c(data, token, mode):
-        return data["colors"][token][mode]
+        return data["colors"][token][mode]["color"]
 
     @staticmethod
     def _alpha(hex_color):
@@ -315,6 +314,14 @@ inactiveForeground={inactive_fg}
 
     def _apply_plasma(self, data):
         base = str(self._scheme_base(self.theme_mode))
+        # Force Plasma's accent source back to "From current color scheme".
+        for args in (
+            ["kwriteconfig6", "--file", "kdeglobals", "--group", "General",
+             "--key", "AccentColor", "transparent"],
+            ["kwriteconfig6", "--file", "kdeglobals", "--group", "General",
+             "--key", "accentColorFromWallpaper", "--type", "bool", "false"],
+        ):
+            self.runner(args, capture_output=True, text=True, check=False)
         self.runner(
             ["plasma-apply-colorscheme", base + "2.colors"],
             capture_output=True,

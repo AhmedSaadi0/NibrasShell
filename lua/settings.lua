@@ -47,11 +47,12 @@ hl.config({
 	},
 })
 
--- hl.config({
--- 	debug = {
+hl.config({
+	debug = {
 -- 		damage_tracking = 2,
--- 	},
--- })
+	disable_logs = false,
+	},
+})
 
 hl.config({
 	gestures = {
@@ -60,16 +61,16 @@ hl.config({
 })
 
 hl.config({
-	render = {
-		new_render_scheduling = true,
-	},
+-- 	render = {
+-- 		new_render_scheduling = true,
+-- 	},
 	cursor = {
 		-- 2 = auto (disables on multi-GPU Nvidia), 1 = force software, 0 = force hardware
 		-- Try 1 first; if cursor still stutters or duplicates, test 0
 		no_hardware_cursors = 1,
 	},
-	opengl = {
-		-- Reduces frame drops on lower-end/hybrid paths (set true only if flickering appears)
-		nvidia_anti_flicker = false,
-	},
+-- 	opengl = {
+-- 		-- Reduces frame drops on lower-end/hybrid paths (set true only if flickering appears)
+-- 		nvidia_anti_flicker = false,
+-- 	},
 })

@@ -21,7 +21,11 @@ def fake_payload():
     for index, token in enumerate(plasma_color.COLOR_TOKENS):
         value = f"#{index + 1:06x}"
         light = f"#{index + 64:06x}"
-        colors[token] = {"dark": value, "default": value, "light": light}
+        colors[token] = {
+            "dark": {"color": value},
+            "default": {"color": value},
+            "light": {"color": light},
+        }
     return {
         "colors": colors,
         "image": "wallpaper.png",
@@ -67,7 +71,8 @@ class MatugenWrapperTest(unittest.TestCase):
             self.assertEqual(matugen_command[matugen_command.index("-m") + 1], "dark")
             self.assertEqual(matugen_command[matugen_command.index("--contrast") + 1], "0.25")
             self.assertEqual(matugen_command[matugen_command.index("-j") + 1], "hex")
-            self.assertIn("--dry-run", matugen_command)
+            self.assertNotIn("--dry-run", matugen_command)
+            self.assertNotIn("--old-json-output", matugen_command)
             self.assertNotIn("-c", matugen_command)
             self.assertNotIn("--chroma", matugen_command)
             self.assertNotIn("--tone", matugen_command)
@@ -99,8 +104,16 @@ class MatugenWrapperTest(unittest.TestCase):
             kdeglobals = (base / ".config/kdeglobals").read_text(encoding="utf-8")
             self.assertIn(f"ColorSchemeHash={digest}", kdeglobals)
 
+            kwrite_calls = [call for call in calls if call[0] == "kwriteconfig6"]
+            self.assertEqual(len(kwrite_calls), 2)
+            self.assertIn("AccentColor", kwrite_calls[0])
+            self.assertIn("transparent", kwrite_calls[0])
+            self.assertIn("accentColorFromWallpaper", kwrite_calls[1])
+            self.assertIn("false", kwrite_calls[1])
+
             apply_calls = [call for call in calls if call[0] == "plasma-apply-colorscheme"]
             self.assertEqual(len(apply_calls), 2)
+            self.assertLess(calls.index(kwrite_calls[0]), calls.index(apply_calls[0]))
             self.assertTrue(apply_calls[0][1].endswith("MaterialYouDark2.colors"))
             self.assertTrue(apply_calls[1][1].endswith("MaterialYouDark.colors"))
 

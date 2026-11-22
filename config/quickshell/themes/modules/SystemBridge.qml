@@ -6,7 +6,7 @@ import "root:/utils" as Utils
 Item {
     id: root
 
-    signal m3Applied()
+    signal m3Applied
     signal m3Failed(string reason)
 
     property var _pendingM3Command: null
