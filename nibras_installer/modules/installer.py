@@ -18,7 +18,10 @@ def backup_configs():
     backup_dir = os.path.join(config_dir, "nibrasshell_backups", f"backup-{timestamp}")
     os.makedirs(backup_dir, exist_ok=True)
 
-    configs_to_backup = ["hypr", "quickshell", "easyeffects"]
+    configs_to_backup = [
+        "hypr", "quickshell", "easyeffects",
+        "matugen", "kitty", "alacritty", "gtk-3.0", "gtk-4.0",
+    ]
     fish_config_path = os.path.join(config_dir, "fish", "config.fish")
 
     for config in configs_to_backup:
@@ -155,6 +158,11 @@ def install_nibrasshell():
         dirs_exist_ok=True,
     )
 
+    for name in ("matugen", "kitty", "alacritty", "gtk-3.0", "gtk-4.0"):
+        src = os.path.join(base_config_src, name)
+        if os.path.exists(src):
+            shutil.copytree(src, os.path.join(config_dir, name), dirs_exist_ok=True)
+
     set_plasma_font()
 
     # Permissions
@@ -204,6 +212,10 @@ def update_quickshell():
             if os.path.exists(src):
                 print(f"  -> Syncing {sub}...")
                 shutil.copytree(src, dst, dirs_exist_ok=True)
+        for name in ("matugen", "kitty", "alacritty", "gtk-3.0", "gtk-4.0"):
+            src = os.path.join(PROJECT_ROOT, "config", name)
+            if os.path.exists(src):
+                shutil.copytree(src, os.path.join(config_dir, name), dirs_exist_ok=True)
         print(f"{GREEN}{msg('update_complete')}{NC}")
     except Exception as e:
         print(f"{RED}Error copying files: {e}{NC}")
@@ -218,7 +230,10 @@ def uninstall_nibrasshell():
     home_dir = os.path.expanduser("~")
     config_dir = os.path.join(home_dir, ".config")
 
-    for d in ["hypr", "quickshell", "easyeffects"]:
+    for d in [
+        "hypr", "quickshell", "easyeffects",
+        "matugen", "kitty", "alacritty", "gtk-3.0", "gtk-4.0",
+    ]:
         path = os.path.join(config_dir, d)
         if os.path.exists(path):
             shutil.rmtree(path)

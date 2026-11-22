@@ -1,0 +1,24 @@
+[config]
+prefer = "saturation"
+
+[config.wallpaper]
+set = false
+command = ""
+
+[templates.kitty]
+input_path = "~/.config/matugen/templates/kitty-colors.conf"
+output_path = "~/.config/kitty/colors-matugen.conf"
+post_hook = "pkill -SIGUSR1 kitty 2>/dev/null || true"
+
+[templates.alacritty]
+input_path = "~/.config/matugen/templates/alacritty-colors.toml"
+output_path = "~/.config/alacritty/colors-matugen.toml"
+post_hook = "touch ~/.config/alacritty/alacritty.toml 2>/dev/null || true"
+
+[templates.gtk3]
+input_path = "~/.config/matugen/templates/gtk-colors.css"
+output_path = "~/.config/gtk-3.0/colors.css"
+
+[templates.gtk4]
+input_path = "~/.config/matugen/templates/gtk-colors.css"
+output_path = "~/.config/gtk-4.0/colors.css"
