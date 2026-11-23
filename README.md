@@ -45,7 +45,7 @@ I built this interface because I genuinely enjoy shaping and having full control
 
 ## ⚡ Quick Install
 
-To install on Arch, Fedora, or Nix (Automatic Script):
+To install on Arch, Fedora, or Void (Automatic Script):
 
 ```bash
 git clone --depth 1 https://github.com/AhmedSaadi0/NibrasShell.git

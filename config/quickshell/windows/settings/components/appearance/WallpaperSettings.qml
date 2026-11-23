@@ -38,8 +38,7 @@ BaseThemeSettings {
 
     // New Color Engine Variables
     property int localSchemeVariant: 2
-    property real localChromaMult: 2.5
-    property real localToneMult: 1.0
+    property real localContrast: 0.0
 
     // ========================================================================
     // Logic
@@ -60,8 +59,7 @@ BaseThemeSettings {
         localStaticWallpaper = s.wallpaper || "";
 
         localSchemeVariant = s.dynamicColoringSchemeVariant !== undefined ? s.dynamicColoringSchemeVariant : 2;
-        localChromaMult = s.dynamicColoringChromaMult !== undefined ? s.dynamicColoringChromaMult : 2.5;
-        localToneMult = s.dynamicColoringToneMult !== undefined ? s.dynamicColoringToneMult : 1.0;
+        localContrast = s.dynamicColoringContrast !== undefined ? s.dynamicColoringContrast : 0.0;
     }
 
     function serializeData() {
@@ -77,8 +75,7 @@ BaseThemeSettings {
             "_selectedWallpaperIndex": localWallpaperIndex,
             "_wallpaper": localStaticWallpaper,
             "_dynamicColoringSchemeVariant": localSchemeVariant,
-            "_dynamicColoringChromaMult": localChromaMult,
-            "_dynamicColoringToneMult": localToneMult
+            "_dynamicColoringContrast": localContrast
         };
     }
 
@@ -161,7 +158,7 @@ BaseThemeSettings {
                 }
             }
             DescriptionLabel {
-                text: qsTr("Extracts dominant colors from the current wallpaper to generate a matching system theme. Requires 'kde-material-you-colors'.")
+                text: qsTr("Extracts dominant colors from the current wallpaper to generate a matching system theme. Requires 'matugen'.")
             }
 
             // Blur Switch & Slider
@@ -233,38 +230,21 @@ BaseThemeSettings {
                 text: qsTr("Defines the algorithm used to generate the palette. 'Vibrant' creates punchy colors, 'Neutral' is desaturated, and 'Fidelity' tries to match the image exactly.")
             }
 
-            // 2. Chroma Multiplier
+            // 2. matugen Contrast
             SliderWithLabel {
-                label: qsTr("Chroma Multiplier (Saturation)")
-                from: 0.0
-                to: 5.0
-                stepSize: 0.1
-                decimals: 1
-                value: root.localChromaMult
-                onEditingFinished: val => {
-                    root.localChromaMult = val;
-                    root.applySingleProperty("_dynamicColoringChromaMult", val);
-                }
-            }
-            DescriptionLabel {
-                text: qsTr("Boosts the color intensity. Higher values (e.g., 2.5) make the theme clearer and more colorful, while lower values make it grayish.")
-            }
-
-            // 3. Tone Multiplier
-            SliderWithLabel {
-                label: qsTr("Tone Multiplier (Contrast)")
-                from: 0.0
-                to: 3.0
-                stepSize: 0.01
+                label: qsTr("Contrast")
+                from: -1.0
+                to: 1.0
+                stepSize: 0.05
                 decimals: 2
-                value: root.localToneMult
+                value: root.localContrast
                 onEditingFinished: val => {
-                    root.localToneMult = val;
-                    root.applySingleProperty("_dynamicColoringToneMult", val);
+                    root.localContrast = val;
+                    root.applySingleProperty("_dynamicColoringContrast", val);
                 }
             }
             DescriptionLabel {
-                text: qsTr("Adjusts the contrast spread. Modify this if the generated colors feel too dark or too washed out compared to the background.")
+                text: qsTr("Adjusts palette contrast. -1 is minimum contrast, 0 is standard, and 1 is maximum contrast.")
             }
         }
 

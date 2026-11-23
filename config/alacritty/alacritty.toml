@@ -1,0 +1,42 @@
+import = ["colors-matugen.toml"]
+
+[window]
+padding = { x = 0, y = 0 }
+dynamic_padding = true
+decorations = "full"
+opacity = 0.95
+blur = true
+
+[font]
+size = 15.0
+
+[font.normal]
+family = "FantasqueSansM Nerd Font Mono"
+style = "Regular"
+
+[font.bold]
+family = "FantasqueSansM Nerd Font Mono"
+style = "Bold"
+
+[font.italic]
+family = "FantasqueSansM Nerd Font Mono"
+style = "Italic"
+
+[font.bold_italic]
+family = "FantasqueSansM Nerd Font Mono"
+style = "Bold Italic"
+
+
+[bell]
+animation = "EaseOutExpo"
+duration = 0
+
+[mouse]
+hide_when_typing = true
+
+[selection]
+save_to_clipboard = true
+
+[general]
+live_config_reload = true
+

@@ -977,7 +977,7 @@
     </message>
     <message>
         <location filename="../windows/settings/WallpaperSettings.qml" line="159"/>
-        <source>Extracts dominant colors from the current wallpaper to generate a matching system theme. Requires &apos;kde-material-you-colors&apos;.</source>
+        <source>Extracts dominant colors from the current wallpaper to generate a matching system theme. Requires &apos;matugen&apos;.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1007,22 +1007,12 @@
     </message>
     <message>
         <location filename="../windows/settings/WallpaperSettings.qml" line="225"/>
-        <source>Chroma Multiplier (Saturation)</source>
+        <source>Contrast</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../windows/settings/WallpaperSettings.qml" line="237"/>
-        <source>Boosts the color intensity. Higher values (e.g., 2.5) make the theme clearer and more colorful, while lower values make it grayish.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../windows/settings/WallpaperSettings.qml" line="242"/>
-        <source>Tone Multiplier (Contrast)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../windows/settings/WallpaperSettings.qml" line="254"/>
-        <source>Adjusts the contrast spread. Modify this if the generated colors feel too dark or too washed out compared to the background.</source>
+        <source>Adjusts palette contrast. -1 is minimum contrast, 0 is standard, and 1 is maximum contrast.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

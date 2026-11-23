@@ -33,9 +33,9 @@ def install_fedora(install_optional):
     run_command_verbose("sudo dnf copr enable -y errornointernet/quickshell")
     run_command_verbose("sudo dnf install -y hyprland quickshell")
 
-    required_pkgs = "plasma-nm playerctl polkit-kde dolphin konsole brightnessctl gammastep wl-clipboard cliphist sysstat bc glib2-devel dbus-glib-devel plasma-systemsettings acpi fish gnome-bluetooth-libs lm_sensors libcap vnstat nethogs jq dbus-devel python3-devel python3.13 python3.13-devel"
+    required_pkgs = "plasma-nm playerctl polkit-kde dolphin konsole brightnessctl gammastep wl-clipboard cliphist sysstat bc glib2-devel dbus-glib-devel plasma-systemsettings acpi fish gnome-bluetooth-libs lm_sensors matugen libcap vnstat nethogs jq dbus-devel python3-devel python3.13 python3.13-devel"
     optional_pkgs = (
-        "strawberry easyeffects blueman telegram-desktop discord kvantum firefox"
+        "strawberry easyeffects blueman telegram-desktop discord kvantum firefox kitty alacritty"
     )
 
     base_command = f"sudo dnf install -y {required_pkgs}"
@@ -81,9 +81,9 @@ def install_fedora(install_optional):
 
 def install_arch(install_optional):
     print(YELLOW + "Starting Arch installer" + NC)
-    required_pkgs = "base-devel quickshell brightnessctl network-manager-applet konsole ark dolphin ffmpegthumbs playerctl polkit-kde-agent jq gammastep wl-clipboard cliphist hyprpicker hyprshot-git bc sysstat sassc systemsettings acpi fish kde-material-you-colors plasma5support plasma5-integration plasma-framework5 ttf-jetbrains-mono-nerd ttf-fantasque-nerd powerdevil gnome-bluetooth-3.0 power-profiles-daemon libjpeg6-turbo python-regex python-pillow python-psutil libcap vnstat nethogs python python313"
+    required_pkgs = "base-devel quickshell brightnessctl network-manager-applet konsole ark dolphin ffmpegthumbs playerctl polkit-kde-agent jq gammastep wl-clipboard cliphist hyprpicker hyprshot-git bc sysstat sassc systemsettings acpi fish matugen plasma5support plasma5-integration plasma-framework5 ttf-jetbrains-mono-nerd ttf-fantasque-nerd powerdevil gnome-bluetooth-3.0 power-profiles-daemon libjpeg6-turbo python-regex python-pillow python-psutil libcap vnstat nethogs python python313"
     optional_pkgs = (
-        "strawberry easyeffects blueman telegram-desktop discord kvantum firefox"
+        "strawberry easyeffects blueman telegram-desktop discord kvantum firefox kitty alacritty"
     )
 
     command = f"yay -S {required_pkgs}"
@@ -101,8 +101,8 @@ def install_void(install_optional):
     )
     run_command_verbose("sudo xbps-install -S")
 
-    required_pkgs = "hyprland quickshell plasma-nm playerctl polkit-kde-agent dolphin konsole brightnessctl gammastep wl-clipboard sysstat bc sassc systemsettings acpi fish-shell gnome-bluetooth power-profiles-daemon lm_sensors libcap-progs vnstat nethogs xz jq python3-devel dbus-devel glib-devel cmake nerd-fonts"
-    optional_pkgs = "strawberry easyeffects blueman telegram-desktop kvantum firefox"
+    required_pkgs = "hyprland quickshell plasma-nm playerctl polkit-kde-agent dolphin konsole brightnessctl gammastep wl-clipboard sysstat bc sassc systemsettings acpi fish-shell gnome-bluetooth power-profiles-daemon lm_sensors matugen libcap-progs vnstat nethogs xz jq python3-devel dbus-devel glib-devel cmake nerd-fonts"
+    optional_pkgs = "strawberry easyeffects blueman telegram-desktop kvantum firefox kitty alacritty"
 
     command = f"sudo xbps-install -y {required_pkgs}"
     if install_optional:
