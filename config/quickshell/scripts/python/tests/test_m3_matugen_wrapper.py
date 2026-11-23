@@ -16,23 +16,26 @@ class Completed:
         self.returncode = returncode
 
 
-def fake_payload():
+def fake_payload(modes=("dark", "light"), with_palettes=True):
     colors = {}
     for index, token in enumerate(plasma_color.COLOR_TOKENS):
         value = f"#{index + 1:06x}"
         light = f"#{index + 64:06x}"
-        colors[token] = {
-            "dark": {"color": value},
-            "default": {"color": value},
-            "light": {"color": light},
-        }
-    return {
+        token_data = {"default": {"color": value}}
+        if "dark" in modes:
+            token_data["dark"] = {"color": value}
+        if "light" in modes:
+            token_data["light"] = {"color": light}
+        colors[token] = token_data
+    payload = {
         "colors": colors,
         "image": "wallpaper.png",
         "is_dark_mode": True,
         "mode": "dark",
-        "palettes": {"primary": {"0": "#000000", "100": "#ffffff"}},
     }
+    if with_palettes:
+        payload["palettes"] = {"primary": {"0": "#000000", "100": "#ffffff"}}
+    return payload
 
 
 class MatugenWrapperTest(unittest.TestCase):
@@ -79,10 +82,9 @@ class MatugenWrapperTest(unittest.TestCase):
 
             schemes = base / ".local/share/color-schemes"
             dark = (schemes / "MaterialYouDark.colors").read_text(encoding="utf-8")
-            dark2 = (schemes / "MaterialYouDark2.colors").read_text(encoding="utf-8")
             light = (schemes / "MaterialYouLight.colors").read_text(encoding="utf-8")
-            self.assertTrue((schemes / "MaterialYouLight2.colors").exists())
-            self.assertEqual(dark, dark2)
+            for name in ("MaterialYouDark2.colors", "MaterialYouLight2.colors"):
+                self.assertFalse((schemes / name).exists())
             self.assertIn("ColorScheme=MaterialYouDark", dark)
             self.assertIn("ColorScheme=MaterialYouLight", light)
             self.assertIn("[Colors:Window]", dark)
@@ -91,31 +93,59 @@ class MatugenWrapperTest(unittest.TestCase):
             self.assertEqual(digest, hashlib.sha1(dark.encode("utf-8")).hexdigest())
 
             konsole_dir = base / ".local/share/konsole"
-            for name in ("MaterialYou", "MaterialYouAlt"):
-                text = (konsole_dir / f"{name}.colorscheme").read_text(encoding="utf-8")
-                color_sections = sum(
-                    1 for line in text.splitlines() if line.startswith("[Color")
-                )
-                self.assertEqual(color_sections, 24)
-                self.assertIn(f"Description={name}", text)
-                self.assertIn("Opacity=0.8", text)
-                self.assertNotIn("\nity=", text)
+            name = "MaterialYou"
+            text = (konsole_dir / f"{name}.colorscheme").read_text(encoding="utf-8")
+            color_sections = sum(
+                1 for line in text.splitlines() if line.startswith("[Color")
+            )
+            self.assertEqual(color_sections, 24)
+            self.assertIn(f"Description={name}", text)
+            self.assertIn("Opacity=0.8", text)
+            self.assertNotIn("\nity=", text)
+            self.assertFalse((konsole_dir / "MaterialYouAlt.colorscheme").exists())
 
-            kdeglobals = (base / ".config/kdeglobals").read_text(encoding="utf-8")
-            self.assertIn(f"ColorSchemeHash={digest}", kdeglobals)
+            kdeglobals = base / ".config/kdeglobals"
+            self.assertFalse(kdeglobals.exists())
 
             kwrite_calls = [call for call in calls if call[0] == "kwriteconfig6"]
-            self.assertEqual(len(kwrite_calls), 2)
+            self.assertEqual(len(kwrite_calls), 3)
+            for call in kwrite_calls:
+                self.assertEqual(call[call.index("--file") + 1], str(kdeglobals))
+                self.assertEqual(call[call.index("--group") + 1], "General")
             self.assertIn("AccentColor", kwrite_calls[0])
             self.assertIn("transparent", kwrite_calls[0])
             self.assertIn("accentColorFromWallpaper", kwrite_calls[1])
             self.assertIn("false", kwrite_calls[1])
+            hash_call = kwrite_calls[2]
+            self.assertEqual(
+                hash_call[hash_call.index("--key") + 1 :], ["ColorSchemeHash", digest]
+            )
 
             apply_calls = [call for call in calls if call[0] == "plasma-apply-colorscheme"]
             self.assertEqual(len(apply_calls), 2)
             self.assertLess(calls.index(kwrite_calls[0]), calls.index(apply_calls[0]))
             self.assertTrue(apply_calls[0][1].endswith("MaterialYouDark2.colors"))
             self.assertTrue(apply_calls[1][1].endswith("MaterialYouDark.colors"))
+
+    def test_single_mode_without_palettes(self):
+        calls = []
+
+        def runner(command, **kwargs):
+            calls.append(command)
+            if command[0] == "matugen":
+                payload = fake_payload(modes=("light",), with_palettes=False)
+                return Completed(stdout=json.dumps(payload))
+            return Completed()
+
+        with tempfile.TemporaryDirectory() as home:
+            plasma_color.ColorExporter(
+                "wallpaper.png", "light", 2, 0.0, home=home, runner=runner
+            ).apply()
+            schemes = Path(home) / ".local/share/color-schemes"
+            self.assertTrue((schemes / "MaterialYouLight.colors").exists())
+            self.assertFalse((schemes / "MaterialYouDark.colors").exists())
+            for name in ("MaterialYouDark2.colors", "MaterialYouLight2.colors"):
+                self.assertFalse((schemes / name).exists())
 
     def test_fallback_color_is_passed(self):
         calls = []

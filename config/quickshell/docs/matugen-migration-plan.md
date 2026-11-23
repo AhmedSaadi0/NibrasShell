@@ -82,7 +82,7 @@ Verified shape:
 
 - `colors`: 50 tokens; each has `dark`, `default`, `light`.
 - `default` equals the active `mode`.
-- `palettes`: `error`, `neutral`, `neutral_variant`, `primary`, `secondary`, `tertiary`.
+- `palettes` (present in matugen output, not required by the writer): `error`, `neutral`, `neutral_variant`, `primary`, `secondary`, `tertiary`.
 - Each palette has tones `0,5,10,15,20,25,30,35,40,50,60,70,80,90,95,98,99,100`.
 
 ### Existing generated formats
@@ -96,8 +96,9 @@ KDE `.colors`:
 Konsole `.colorscheme`:
 
 - Sections: `[Background]`, `[BackgroundFaint]`, `[BackgroundIntense]`, `[Color0..7]` plus matching `Faint`/`Intense`, `[Foreground*]`, `[General]`.
-- Values: `R,G,B`; `Opacity=0.8`; `Description=MaterialYou|MaterialYouAlt`.
+- Values: `R,G,B`; `Opacity=0.8`; `Description=MaterialYou`.
 - Both current files end with a stray `ity=1` line; the new writer will not reproduce it.
+- `MaterialYouAlt.profile` is a Konsole profile (separate from the color scheme); reload keeps using it.
 
 ---
 
@@ -138,19 +139,19 @@ matugen -q image <path> -t <scheme-type> -m <mode>
   --contrast <value> -j hex --dry-run [--fallback-color <hex>]
 ```
 
-- Parse JSON with `json.loads(stdout)` and validate `colors`, `mode`, `palettes`.
+- Parse JSON with `json.loads(stdout)`; validate `colors` and the requested mode. `palettes` is optional and unused.
 - Use `colors[token][mode]` as the active palette value.
-- Write KDE `.colors` files with plain strings / `pathlib`.
+- Write only the modes present in the payload as KDE `.colors` files with plain strings / `pathlib`.
 - Apply Plasma with `subprocess.run([...])`, no `shell=True`.
 - Write Konsole `.colorscheme` files.
 - Stop writing `/tmp/kde-material-you-colors-*.json`, CSS, Kitty, pywal, and KSyntax files.
 
-**KDE files written**
+**KDE files kept**
 
-- `~/.local/share/color-schemes/MaterialYouDark.colors`
-- `~/.local/share/color-schemes/MaterialYouDark2.colors`
-- `~/.local/share/color-schemes/MaterialYouLight.colors`
-- `~/.local/share/color-schemes/MaterialYouLight2.colors`
+- `~/.local/share/color-schemes/MaterialYouDark.colors` (only when dark colors are present)
+- `~/.local/share/color-schemes/MaterialYouLight.colors` (only when light colors are present)
+
+`MaterialYouDark2.colors` / `MaterialYouLight2.colors` are temporary apply copies written inside `_apply_plasma` and deleted in a `finally` block.
 
 Stop writing `*_darker_titlebar*.colors`; they are legacy and not used by current variants.
 
@@ -180,15 +181,16 @@ Stop writing `*_darker_titlebar*.colors`; they are legacy and not used by curren
 
 **Plasma apply + hash**
 
-1. `plasma-apply-colorscheme <target>2.colors` (`check=False`).
-2. `plasma-apply-colorscheme <target>.colors` (`check=True`).
-3. SHA-1 the applied `.colors`.
-4. Update `[General] ColorSchemeHash` in `~/.config/kdeglobals` with `configparser` (`optionxform = str`, `space_around_delimiters=False`).
+1. Write `<target>2.colors` as a temporary copy of the active mode.
+2. `plasma-apply-colorscheme <target>2.colors` (`check=False`).
+3. `plasma-apply-colorscheme <target>.colors` (`check=True`).
+4. Delete the temporary copy in `finally`.
+5. SHA-1 the applied `.colors`.
+6. Update `ColorSchemeHash` via `kwriteconfig6 --file <home>/.config/kdeglobals --group General --key ColorSchemeHash <digest>` (`check=True`); no direct `kdeglobals` file rewrite.
 
 **Konsole files written**
 
 - `~/.local/share/konsole/MaterialYou.colorscheme`
-- `~/.local/share/konsole/MaterialYouAlt.colorscheme`
 
 Mapping:
 
@@ -197,7 +199,7 @@ Mapping:
 - Base 8: `surface, primary, secondary, error, tertiary, inverse_primary, on_surface_variant, outline`.
 - Intense 8: `surface_bright, primary_fixed, secondary_fixed, error, tertiary_fixed, primary_container, secondary_container, inverse_surface`.
 - Faint 8: `surface_dim, primary_fixed_dim, secondary_fixed_dim, error_container, tertiary_fixed_dim, on_primary_fixed_variant, on_secondary_fixed_variant, on_surface_variant`.
-- Convert `#RRGGBB` → `R,G,B`; `Opacity=0.8`, `Blur=false`, `Description=MaterialYou|MaterialYouAlt`.
+- Convert `#RRGGBB` → `R,G,B`; `Opacity=0.8`, `Blur=false`, `Description=MaterialYou`.
 
 **Delete**
 
@@ -212,7 +214,7 @@ Mapping:
 **Create** `scripts/python/tests/test_m3_matugen_wrapper.py`
 
 - `unittest` + `tempfile`; mock `subprocess.run` with fixture JSON.
-- Assert scheme mapping, allowed argv, contrast validation, `.colors` sections/keys, Konsole 24 colors, hash update, and no stray `ity=`.
+- Assert scheme mapping, allowed argv, contrast validation, `.colors` sections/keys, Konsole 24 colors, hash via `kwriteconfig6`, temp-copy cleanup, and no stray `ity=`.
 
 ---
 
@@ -343,9 +345,10 @@ Assert:
 - Exact `0..8` → `scheme-*` mapping.
 - Argv contains only allowed flags: `image`, `-t`, `-m`, `--contrast`, `-j hex`, `-q`, `--dry-run`, optional `--fallback-color`.
 - Invalid contrast outside `-1..1` exits nonzero.
-- Both dark and light `.colors` texts contain required sections and `ColorScheme=MaterialYouDark|Light`.
-- `MaterialYou` and `MaterialYouAlt` colorschemes have 24 colors, `R,G,B` values, `Opacity=0.8`, and no `ity=1`.
-- `kdeglobals` rewrite changes only `ColorSchemeHash`.
+- Modes present in the payload produce `.colors` texts with required sections and `ColorScheme=MaterialYouDark|Light`; missing modes produce no file.
+- `MaterialYou` colorscheme has 24 colors, `R,G,B` values, `Opacity=0.8`, and no `ity=1`; no `MaterialYouAlt.colorscheme` is written.
+- `ColorSchemeHash` is set by a `kwriteconfig6 --file <home>/.config/kdeglobals` call; no direct `kdeglobals` file write.
+- Temporary `*2.colors` copies are gone after `apply()`.
 - Legacy chroma/tone keys are not written to new caches.
 
 ### Live Quickshell checklist
@@ -354,10 +357,10 @@ Assert:
 2. Confirm log shows one `matugen ... --dry-run -j hex` invocation and clean exit.
 3. Confirm `Kirigami.Theme.highlightColor` changes and shell colors follow.
 4. Confirm `kdeglobals ColorSchemeHash` equals SHA-1 of applied `MaterialYouDark.colors`.
-5. Switch to `M3Light`; verify `MaterialYouLight.colors` applied and `MaterialYouLight2.colors` exists.
+5. Switch to `M3Light`; verify `MaterialYouLight.colors` applied and no temporary `MaterialYouLight2.colors` is left behind.
 6. Next/previous wallpaper: exactly one process run per change; no overlapping writers.
 7. Change Contrast slider: one rerun, reflected in Plasma/Kirigami and Hyprland borders after `m3Applied`.
-8. Konsole running sessions update via `apply_konsole_profile_open_sessions.py`; profile stays `MaterialYouAlt.profile`.
-9. Settings dropdown still lists `MaterialYouDark`, `MaterialYouLight`, `MaterialYouAlt`.
+8. Konsole running sessions update via `apply_konsole_profile_open_sessions.py`; profile stays `MaterialYouAlt.profile` (its `ColorScheme=MaterialYou` still exists).
+9. Settings dropdown still lists `MaterialYouDark`, `MaterialYouLight` and the existing `MaterialYouAlt.profile`.
 10. AI palette assistant on a dynamic theme shows the guard message; on a static theme it still creates `NibrasShellAiGenerated-*`.
 11. Confirm no `/tmp/kde-material-you-colors-*.json`, AGS SCSS, Kitty conf, or pywal files are written.

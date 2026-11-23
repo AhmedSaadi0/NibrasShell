@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import configparser
 import hashlib
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-
-SCHEME_TYPES = (
+SCHEME_TYPES: tuple[str, ...] = (
     "scheme-content",
     "scheme-expressive",
     "scheme-fidelity",
@@ -23,7 +23,7 @@ SCHEME_TYPES = (
 
 # Breeze-derived text-state colors used by the old package. They are stable
 # and avoid inventing semantic colors matugen does not emit.
-EXTRA_COLORS = {
+EXTRA_COLORS: dict[str, str] = {
     "link": "#2980b9",
     "negative": "#da4453",
     "neutral": "#f67400",
@@ -31,24 +31,60 @@ EXTRA_COLORS = {
     "visited": "#9b59b6",
 }
 
-COLOR_TOKENS = (
-    "background", "error", "error_container", "inverse_on_surface",
-    "inverse_primary", "inverse_surface", "on_background", "on_error",
-    "on_error_container", "on_primary", "on_primary_container",
-    "on_primary_fixed", "on_primary_fixed_variant", "on_secondary",
-    "on_secondary_container", "on_secondary_fixed",
-    "on_secondary_fixed_variant", "on_surface", "on_surface_variant",
-    "on_tertiary", "on_tertiary_container", "on_tertiary_fixed",
-    "on_tertiary_fixed_variant", "outline", "outline_variant", "primary",
-    "primary_container", "primary_fixed", "primary_fixed_dim", "scrim",
-    "secondary", "secondary_container", "secondary_fixed",
-    "secondary_fixed_dim", "shadow", "source_color", "surface",
-    "surface_bright", "surface_container", "surface_container_high",
-    "surface_container_highest", "surface_container_low",
-    "surface_container_lowest", "surface_dim", "surface_tint",
-    "surface_variant", "tertiary", "tertiary_container", "tertiary_fixed",
+COLOR_TOKENS: tuple[str, ...] = (
+    "background",
+    "error",
+    "error_container",
+    "inverse_on_surface",
+    "inverse_primary",
+    "inverse_surface",
+    "on_background",
+    "on_error",
+    "on_error_container",
+    "on_primary",
+    "on_primary_container",
+    "on_primary_fixed",
+    "on_primary_fixed_variant",
+    "on_secondary",
+    "on_secondary_container",
+    "on_secondary_fixed",
+    "on_secondary_fixed_variant",
+    "on_surface",
+    "on_surface_variant",
+    "on_tertiary",
+    "on_tertiary_container",
+    "on_tertiary_fixed",
+    "on_tertiary_fixed_variant",
+    "outline",
+    "outline_variant",
+    "primary",
+    "primary_container",
+    "primary_fixed",
+    "primary_fixed_dim",
+    "scrim",
+    "secondary",
+    "secondary_container",
+    "secondary_fixed",
+    "secondary_fixed_dim",
+    "shadow",
+    "source_color",
+    "surface",
+    "surface_bright",
+    "surface_container",
+    "surface_container_high",
+    "surface_container_highest",
+    "surface_container_low",
+    "surface_container_lowest",
+    "surface_dim",
+    "surface_tint",
+    "surface_variant",
+    "tertiary",
+    "tertiary_container",
+    "tertiary_fixed",
     "tertiary_fixed_dim",
 )
+
+KONSOLE_SCHEMES: tuple[str, ...] = ("MaterialYou",)
 
 
 class ColorExporter:
@@ -56,14 +92,16 @@ class ColorExporter:
 
     def __init__(
         self,
-        wallpaper_data,
-        theme_mode,
-        scheme_variant,
-        contrast,
-        fallback_color=None,
-        home=None,
-        runner=subprocess.run,
-    ):
+        wallpaper_path: str | Path,
+        theme_mode: str,
+        scheme_variant: int,
+        contrast: float,
+        fallback_color: str | None = None,
+        home: str | Path | None = None,
+        runner: Callable[..., Any] = subprocess.run,
+    ) -> None:
+        if not wallpaper_path:
+            raise ValueError("wallpaper_path must not be empty")
         if theme_mode not in ("dark", "light"):
             raise ValueError(f"invalid theme mode: {theme_mode}")
         if not 0 <= scheme_variant < len(SCHEME_TYPES):
@@ -71,27 +109,32 @@ class ColorExporter:
         if not -1.0 <= contrast <= 1.0:
             raise ValueError(f"contrast must be between -1 and 1: {contrast}")
 
-        self.wallpaper_data = wallpaper_data
+        self.wallpaper_path = Path(wallpaper_path)
         self.theme_mode = theme_mode
         self.scheme_variant = scheme_variant
         self.contrast = contrast
         self.fallback_color = fallback_color
         self.home = Path(home).expanduser() if home else Path.home()
         self.runner = runner
-        self._plasma_contents = {}
+        self._plasma_contents: dict[str, str] = {}
 
-    def apply(self):
+    def apply(self) -> str:
         payload = self._matugen_json()
         self._write_plasma(payload)
         self._write_konsole(payload)
-        return self._apply_plasma(payload)
+        return self._apply_plasma()
 
-    def _matugen_json(self):
+    def _run(self, command: list[str], *, check: bool = True) -> Any:
+        return self.runner(
+            command, capture_output=True, text=True, check=check
+        )
+
+    def _matugen_json(self) -> dict[str, Any]:
         command = [
             "matugen",
             "-q",
             "image",
-            str(self.wallpaper_data),
+            str(self.wallpaper_path),
             "-t",
             SCHEME_TYPES[self.scheme_variant],
             "-m",
@@ -104,33 +147,63 @@ class ColorExporter:
         if self.fallback_color:
             command += ["--fallback-color", self.fallback_color]
 
-        result = self.runner(command, capture_output=True, text=True, check=True)
+        result = self._run(command, check=True)
         data = json.loads(result.stdout)
+        if not isinstance(data, dict):
+            raise ValueError("matugen JSON root must be an object")
+
         colors = data.get("colors")
         if not isinstance(colors, dict):
             raise ValueError("matugen JSON missing 'colors' object")
+
         for token in COLOR_TOKENS:
-            if token not in colors or self.theme_mode not in colors[token]:
-                raise ValueError(f"matugen JSON missing colors.{token}.{self.theme_mode}")
-        if not isinstance(data.get("palettes"), dict):
-            raise ValueError("matugen JSON missing 'palettes' object")
+            token_data = colors.get(token)
+            if not isinstance(token_data, dict):
+                raise ValueError(f"matugen JSON missing colors.{token}")
+            mode_data = token_data.get(self.theme_mode)
+            if not isinstance(mode_data, dict) or "color" not in mode_data:
+                raise ValueError(
+                    f"matugen JSON missing colors.{token}.{self.theme_mode}.color"
+                )
+
         return data
 
     @staticmethod
-    def _c(data, token, mode):
-        return data["colors"][token][mode]["color"]
+    def _has_mode(data: dict[str, Any], mode: str) -> bool:
+        colors = data["colors"]
+        return all(
+            isinstance(colors[token].get(mode), dict)
+            and "color" in colors[token][mode]
+            for token in COLOR_TOKENS
+        )
 
     @staticmethod
-    def _alpha(hex_color):
-        return "#ff" + hex_color.lstrip("#")
+    def _c(data: dict[str, Any], token: str, mode: str) -> str:
+        return str(data["colors"][token][mode]["color"])
 
     @staticmethod
-    def _rgb(hex_color):
-        raw = hex_color.lstrip("#")
-        return ",".join(str(int(raw[i:i + 2], 16)) for i in (0, 2, 4))
+    def _normalize_hex(hex_color: str) -> str:
+        raw = hex_color.strip().lstrip("#")
+        if len(raw) == 3:
+            raw = "".join(ch * 2 for ch in raw)
+        if len(raw) != 6:
+            raise ValueError(f"invalid hex color: {hex_color}")
+        int(raw, 16)
+        return raw
 
-    def _render_kde_scheme(self, data, mode):
-        c = lambda token: self._c(data, token, mode)
+    @classmethod
+    def _alpha(cls, hex_color: str) -> str:
+        return f"#ff{cls._normalize_hex(hex_color)}"
+
+    @classmethod
+    def _rgb(cls, hex_color: str) -> str:
+        raw = cls._normalize_hex(hex_color)
+        return ",".join(str(int(raw[i : i + 2], 16)) for i in (0, 2, 4))
+
+    def _render_kde_scheme(self, data: dict[str, Any], mode: str) -> str:
+        def c(token: str) -> str:
+            return self._c(data, token, mode)
+
         dark = mode == "dark"
         scheme_name = "MaterialYouDark" if dark else "MaterialYouLight"
         display_name = "Material You dark" if dark else "Material You Light"
@@ -139,7 +212,9 @@ class ColorExporter:
         view_hover = c("inverse_primary") if dark else c("secondary_fixed")
         active_blend = "252,252,252" if dark else "227,229,231"
         inactive_blend = "161,169,177" if dark else "239,240,241"
-        inactive_fg = c("on_secondary_container") if dark else c("on_surface_variant")
+        inactive_fg = (
+            c("on_secondary_container") if dark else c("on_surface_variant")
+        )
 
         link = EXTRA_COLORS["link"]
         negative = EXTRA_COLORS["negative"]
@@ -298,84 +373,124 @@ inactiveBlend={inactive_blend}
 inactiveForeground={inactive_fg}
 """
 
-    def _scheme_base(self, mode):
+    def _scheme_path(self, mode: str) -> Path:
         name = "MaterialYouDark" if mode == "dark" else "MaterialYouLight"
-        return self.home / ".local/share/color-schemes" / name
+        return self.home / ".local/share/color-schemes" / f"{name}.colors"
 
-    def _write_plasma(self, data):
+    def _write_plasma(self, data: dict[str, Any]) -> None:
+        self._plasma_contents.clear()
         schemes_dir = self.home / ".local/share/color-schemes"
         schemes_dir.mkdir(parents=True, exist_ok=True)
+
         for mode in ("dark", "light"):
+            if not self._has_mode(data, mode):
+                continue
             content = self._render_kde_scheme(data, mode)
             self._plasma_contents[mode] = content
-            base = str(self._scheme_base(mode))
-            for suffix in ("", "2"):
-                Path(base + suffix + ".colors").write_text(content, encoding="utf-8")
+            self._scheme_path(mode).write_text(content, encoding="utf-8")
 
-    def _apply_plasma(self, data):
-        base = str(self._scheme_base(self.theme_mode))
+    def _apply_plasma(self) -> str:
+        target_scheme = self._scheme_path(self.theme_mode)
+        temp_scheme = target_scheme.with_name(
+            f"{target_scheme.stem}2{target_scheme.suffix}"
+        )
+        kdeglobals = self.home / ".config/kdeglobals"
+        kdeglobals.parent.mkdir(parents=True, exist_ok=True)
+
         # Force Plasma's accent source back to "From current color scheme".
         for args in (
-            ["kwriteconfig6", "--file", "kdeglobals", "--group", "General",
-             "--key", "AccentColor", "transparent"],
-            ["kwriteconfig6", "--file", "kdeglobals", "--group", "General",
-             "--key", "accentColorFromWallpaper", "--type", "bool", "false"],
+            [
+                "kwriteconfig6",
+                "--file",
+                str(kdeglobals),
+                "--group",
+                "General",
+                "--key",
+                "AccentColor",
+                "transparent",
+            ],
+            [
+                "kwriteconfig6",
+                "--file",
+                str(kdeglobals),
+                "--group",
+                "General",
+                "--key",
+                "accentColorFromWallpaper",
+                "--type",
+                "bool",
+                "false",
+            ],
         ):
-            self.runner(args, capture_output=True, text=True, check=False)
-        self.runner(
-            ["plasma-apply-colorscheme", base + "2.colors"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.runner(
-            ["plasma-apply-colorscheme", base + ".colors"],
-            capture_output=True,
-            text=True,
+            self._run(args, check=False)
+
+        content = self._plasma_contents[self.theme_mode]
+        temp_scheme.write_text(content, encoding="utf-8")
+        try:
+            self._run(
+                ["plasma-apply-colorscheme", str(temp_scheme)], check=False
+            )
+            self._run(
+                ["plasma-apply-colorscheme", str(target_scheme)], check=True
+            )
+        finally:
+            temp_scheme.unlink(missing_ok=True)
+
+        digest = hashlib.sha1(content.encode("utf-8")).hexdigest()
+        self._run(
+            [
+                "kwriteconfig6",
+                "--file",
+                str(kdeglobals),
+                "--group",
+                "General",
+                "--key",
+                "ColorSchemeHash",
+                digest,
+            ],
             check=True,
         )
-        digest = hashlib.sha1(
-            self._plasma_contents[self.theme_mode].encode("utf-8")
-        ).hexdigest()
-        self._update_kde_globals(digest)
         return digest
 
-    def _update_kde_globals(self, digest):
-        path = self.home / ".config/kdeglobals"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        config = configparser.ConfigParser(interpolation=None)
-        config.optionxform = str
-        if path.exists():
-            config.read(path, encoding="utf-8")
-        if not config.has_section("General"):
-            config.add_section("General")
-        config.set("General", "ColorSchemeHash", digest)
-        with path.open("w", encoding="utf-8") as handle:
-            config.write(handle, space_around_delimiters=False)
+    def _write_konsole(self, data: dict[str, Any]) -> None:
+        def c(token: str) -> str:
+            return self._c(data, token, self.theme_mode)
 
-    def _write_konsole(self, data):
-        c = lambda token: self._c(data, token, self.theme_mode)
         konsole_dir = self.home / ".local/share/konsole"
         konsole_dir.mkdir(parents=True, exist_ok=True)
 
         base = (
-            c("surface"), c("primary"), c("secondary"), c("error"),
-            c("tertiary"), c("inverse_primary"), c("on_surface_variant"),
+            c("surface"),
+            c("primary"),
+            c("secondary"),
+            c("error"),
+            c("tertiary"),
+            c("inverse_primary"),
+            c("on_surface_variant"),
             c("outline"),
         )
         intense = (
-            c("surface_bright"), c("primary_fixed"), c("secondary_fixed"),
-            c("error"), c("tertiary_fixed"), c("primary_container"),
-            c("secondary_container"), c("inverse_surface"),
+            c("surface_bright"),
+            c("primary_fixed"),
+            c("secondary_fixed"),
+            c("error"),
+            c("tertiary_fixed"),
+            c("primary_container"),
+            c("secondary_container"),
+            c("inverse_surface"),
         )
         faint = (
-            c("surface_dim"), c("primary_fixed_dim"), c("secondary_fixed_dim"),
-            c("error_container"), c("tertiary_fixed_dim"),
-            c("on_primary_fixed_variant"), c("on_secondary_fixed_variant"),
+            c("surface_dim"),
+            c("primary_fixed_dim"),
+            c("secondary_fixed_dim"),
+            c("error_container"),
+            c("tertiary_fixed_dim"),
+            c("on_primary_fixed_variant"),
+            c("on_secondary_fixed_variant"),
             c("on_surface_variant"),
         )
 
-        def color_section(name, value):
+        def color_section(name: str, value: str) -> str:
             return f"[{name}]\nColor={self._rgb(value)}"
 
         parts = [
@@ -393,7 +508,7 @@ inactiveForeground={inactive_fg}
             color_section("ForegroundIntense", c("inverse_surface")),
         ]
 
-        for description in ("MaterialYou", "MaterialYouAlt"):
+        for description in KONSOLE_SCHEMES:
             general = (
                 "[General]\n"
                 "Anchor=0.5,0.5\n"
