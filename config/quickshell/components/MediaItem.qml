@@ -15,9 +15,12 @@ Item {
     property bool muted: false
     // Lock surfaces set this so cached wallpapers are present on frame 1.
     property bool syncLoad: false
+    // Optional decode cap (physical pixels). 0x0 keeps the old native-size behavior.
+    property size maxSourceSize: Qt.size(0, 0)
 
     // --- State & Getters ---
     readonly property bool isVideoType: _isVideo(source)
+    readonly property bool isAnimatedType: _isAnimated(source)
 
     property bool isReady: {
         if (!loader.item)
@@ -41,6 +44,12 @@ Item {
         return /\.(mp4|mkv|webm|avi|mov|flv)$/i.test(path.toString());
     }
 
+    function _isAnimated(path) {
+        if (!path)
+            return false;
+        return /\.(gif|webp|apng|mng)$/i.test(path.toString());
+    }
+
     function _resolvePath(path) {
         if (!path)
             return "";
@@ -58,7 +67,9 @@ Item {
         sourceComponent: {
             if (!mItem.source)
                 return undefined;
-            return mItem.isVideoType ? videoComp : imageComp;
+            if (mItem.isVideoType)
+                return videoComp;
+            return mItem.isAnimatedType ? animImageComp : staticImageComp;
         }
     }
 
@@ -114,9 +125,30 @@ Item {
         }
     }
 
-    // --- 2. Image/GIF Component ---
+    // --- 2. Static image: shares Desktop's QQuickPixmapCache entry ---
     Component {
-        id: imageComp
+        id: staticImageComp
+        Image {
+            id: staticImg
+            anchors.fill: parent
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: !mItem.syncLoad
+            cache: true
+
+            source: mItem.source
+            // Low keeps the half-res path; High uses the shared physical-pixel cap.
+            sourceSize: mItem.quality === "Low"
+                ? Qt.size(parent.width / 2, parent.height / 2)
+                : ((mItem.maxSourceSize.width > 0 && mItem.maxSourceSize.height > 0) ? mItem.maxSourceSize : undefined)
+
+            smooth: mItem.quality === "High"
+            mipmap: mItem.quality === "High"
+        }
+    }
+
+    // --- 3. Animated image (GIF/WebP/APNG/MNG) ---
+    Component {
+        id: animImageComp
         AnimatedImage {
             id: img
             anchors.fill: parent
@@ -128,8 +160,10 @@ Item {
             playing: mItem.active && mItem.visible
             paused: !playing
 
-            // في وضع Low: نحمل الصورة بنصف الحجم الأصلي
-            sourceSize: mItem.quality === "Low" ? Qt.size(parent.width / 2, parent.height / 2) : undefined
+            // Low keeps the half-res path; High uses the shared physical-pixel cap.
+            sourceSize: mItem.quality === "Low"
+                ? Qt.size(parent.width / 2, parent.height / 2)
+                : ((mItem.maxSourceSize.width > 0 && mItem.maxSourceSize.height > 0) ? mItem.maxSourceSize : undefined)
 
             // في وضع Low: نلغي التنعيم
             smooth: mItem.quality === "High"

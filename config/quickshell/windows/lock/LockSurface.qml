@@ -1,6 +1,7 @@
 // windows/lock/LockSurface.qml
 
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls as Controls
 import Quickshell
@@ -41,6 +42,12 @@ WlSessionLockSurface {
     readonly property real initialYScale: height > 0 ? (height - sheetTopMargin - sheetBottomMargin) / height : 1
     readonly property real initialTranslateX: (sheetLeftMargin - sheetRightMargin) / 2
     readonly property real initialTranslateY: (sheetTopMargin - sheetBottomMargin) / 2
+
+    // Identical cache key to Desktop.qml: physical screen pixels, static per screen.
+    readonly property real wallpaperDpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    readonly property size wallpaperMaxSourceSize: Qt.size(
+        Math.round((screen ? screen.width : Screen.width) * wallpaperDpr),
+        Math.round((screen ? screen.height : Screen.height) * wallpaperDpr))
 
     color: ThemeManager.selectedTheme.colors.surface
 
@@ -154,6 +161,7 @@ WlSessionLockSurface {
 
                 wallpaperSource: ThemeManager.currentWallpaper
                 overlaySource: root.depthActive ? root.currentOverlay : ""
+                maxSourceSize: root.wallpaperMaxSourceSize
                 depthEnabled: root.depthActive
                 isMenuOpen: false
                 blurEnabled: ThemeManager.selectedTheme.systemSettings.enableWallpaperBlur

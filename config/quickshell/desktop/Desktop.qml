@@ -1,6 +1,7 @@
 // desktop/Desktop.qml
 
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
@@ -40,6 +41,12 @@ PanelWindow {
 
     property int elementRadius: Theme.ThemeManager.selectedTheme.dimensions.elementRadius
     property int cornerRadius: elementRadius <= 1 ? 0 : elementRadius + 6
+
+    // Shared with LockSurface: physical screen pixels, never the animating sheet size.
+    readonly property real wallpaperDpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    readonly property size wallpaperMaxSourceSize: Qt.size(
+        Math.round((screen ? screen.width : Screen.width) * wallpaperDpr),
+        Math.round((screen ? screen.height : Screen.height) * wallpaperDpr))
 
     // التحقق مما إذا كانت هذه الشاشة هي الشاشة النشطة
     readonly property bool isFocusedMonitor: desktopRoot.screen && Hyprland.focusedMonitor && (desktopRoot.screen.name === Hyprland.focusedMonitor.name)
@@ -111,6 +118,7 @@ PanelWindow {
             anchors.fill: parent
 
             overlaySource: desktopRoot.currentOverlay
+            maxSourceSize: desktopRoot.wallpaperMaxSourceSize
             depthEnabled: desktopRoot.depthEffectActive
             isMenuOpen: desktopRoot.isMenuOpened
             blurEnabled: desktopRoot.blurEnabled
