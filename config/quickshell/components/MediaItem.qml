@@ -12,6 +12,7 @@ Item {
     property bool active: false
     // "High": جودة كاملة، "Low": أداء عالي (دقة أقل)
     property string quality: "High"
+    property bool muted: false
 
     // --- State & Getters ---
     readonly property bool isVideoType: _isVideo(source)
@@ -82,6 +83,7 @@ Item {
             MediaPlayer {
                 id: player
                 videoOutput: vOut
+                audioOutput: AudioOutput { id: audioOut; volume: mItem.muted ? 0 : 1 }
                 source: mItem.source ? Qt.resolvedUrl(mItem._resolvePath(mItem.source)) : ""
                 loops: MediaPlayer.Infinite
 

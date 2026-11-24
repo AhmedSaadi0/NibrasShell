@@ -72,7 +72,7 @@ Item {
         StackView {
             id: viewStack
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 800
+            Layout.preferredWidth: 880
             Layout.preferredHeight: 180
             clip: false
 
@@ -163,6 +163,8 @@ Item {
                     return tileSuspend;
                 if (tileLogOut.hovered)
                     return tileLogOut;
+                if (tileLock.hovered)
+                    return tileLock;
                 return null;
             }
 
@@ -272,6 +274,18 @@ Item {
                         root.pendingActionMessage = qsTr("Exit Session?");
                         root.confirmActionText = qsTr("Log Out");
                         viewStack.push(confirmActions);
+                    }
+                }
+
+                PowerTile {
+                    id: tileLock
+                    icon: "\uf023"
+                    label: qsTr("Lock")
+                    accentColor: theme.colors.primary
+                    onClicked: {
+                        // Drop the power menu's exclusive keyboard focus first.
+                        root.close();
+                        Qt.callLater(() => LockService.lock());
                     }
                 }
             }

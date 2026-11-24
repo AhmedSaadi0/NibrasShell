@@ -101,6 +101,12 @@ Controls.ApplicationWindow {
                     onCancelChanges: root.cancelAllChanges()
                 }
             }
+            Component {
+                id: lockIdleComp
+                LockIdlePage {
+                    onCancelChanges: root.cancelAllChanges()
+                }
+            }
 
             // --- Existing Appearance Pages ---
             Component {
@@ -205,6 +211,9 @@ Controls.ApplicationWindow {
                     , monitorsSettingsComp.createObject(contentStack, {
                         visible: false
                     })       // Index 11
+                    , lockIdleComp.createObject(contentStack, {
+                        visible: false
+                    })       // Index 12
                 ];
 
                 // عرض الصفحة الأولى افتراضياً

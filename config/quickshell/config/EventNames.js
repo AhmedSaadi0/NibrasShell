@@ -27,3 +27,8 @@ var DOCK_APPS_CHANGED = "dockAppsChanged";
 var APP_MENU_CLOSE_ALL = "appMenuCloseAll";
 
 var TOGGLE_POWER_MENU = "togglePowerMenu";
+
+var REQUEST_LOCK = "requestLock";
+var REQUEST_UNLOCK = "requestUnlock";
+var LOCK_STATE_CHANGED = "lockStateChanged";
+var PAM_TEST_RESULT = "pamTestResult";

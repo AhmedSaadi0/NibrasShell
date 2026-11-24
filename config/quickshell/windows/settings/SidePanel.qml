@@ -149,6 +149,12 @@ Rectangle {
                 icon: "󰍹",
                 type: "item",
                 pageIndex: 11
+            },
+            {
+                name: qsTr("Lock & Idle"),
+                icon: "\uf023",
+                type: "item",
+                pageIndex: 12
             }
         ]
 
