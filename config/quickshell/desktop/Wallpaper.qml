@@ -18,6 +18,9 @@ Item {
     property real blurValue: 0.9
     property string graphicsQuality: "High"
     property real bottomMargin: 0
+    // Forwarded to every MediaItem; desktop callers keep the defaults.
+    property bool muted: false
+    property bool syncLoad: false
 
     Behavior on bottomMargin {
         NumberAnimation {
@@ -94,6 +97,8 @@ Item {
             active: opacity > 0
 
             quality: root.graphicsQuality
+            muted: root.muted
+            syncLoad: root.syncLoad
 
             state: root.bgShowChannel1 ? "active" : "inactive"
 
@@ -121,7 +126,7 @@ Item {
                     to: "active"
                     NumberAnimation {
                         property: "opacity"
-                        duration: 520
+                        duration: root.syncLoad ? 0 : 520
                         easing.type: Easing.OutCubic
                     }
                 },
@@ -147,6 +152,8 @@ Item {
             active: opacity > 0
 
             quality: root.graphicsQuality
+            muted: root.muted
+            syncLoad: root.syncLoad
 
             state: !root.bgShowChannel1 ? "active" : "inactive"
 
@@ -174,7 +181,7 @@ Item {
                     to: "active"
                     NumberAnimation {
                         property: "opacity"
-                        duration: 520
+                        duration: root.syncLoad ? 0 : 520
                         easing.type: Easing.OutCubic
                     }
                 },
@@ -234,11 +241,13 @@ Item {
             anchors.fill: parent
             active: opacity > 0
             quality: root.graphicsQuality
+            muted: root.muted
+            syncLoad: root.syncLoad
 
             opacity: root.fgShowChannel1 ? 1 : 0
             Behavior on opacity {
                 NumberAnimation {
-                    duration: 520
+                    duration: root.syncLoad ? 0 : 520
                     easing.type: Easing.OutCubic
                 }
             }
@@ -249,11 +258,13 @@ Item {
             anchors.fill: parent
             active: opacity > 0
             quality: root.graphicsQuality
+            muted: root.muted
+            syncLoad: root.syncLoad
 
             opacity: !root.fgShowChannel1 ? 1 : 0
             Behavior on opacity {
                 NumberAnimation {
-                    duration: 520
+                    duration: root.syncLoad ? 0 : 520
                     easing.type: Easing.OutCubic
                 }
             }

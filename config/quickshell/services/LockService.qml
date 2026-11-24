@@ -32,6 +32,7 @@ Singleton {
     property bool lockMonitorEnabled: false
     property bool suspendMonitorEnabled: false
     property bool lockRequested: false
+    property bool unlocking: false
     property string authScreenName: ""
     property string passwordBuffer: ""
     readonly property string state: lockRequested ? "locked" : (dimActive ? "dimmed" : "awake")
@@ -50,6 +51,8 @@ Singleton {
     // --- shared PAM state (one context, never inside a lock surface) ---
     property string pamUser: Quickshell.env("USER") || ""
     property bool pamBusy: false
+    // True only while PAM is actually verifying a submitted response, not while waiting for input.
+    property bool pamVerifying: false
     property int failedAttempts: 0
     property string lastError: ""
     property string pamStatus: qsTr("Ready")
@@ -213,6 +216,27 @@ Singleton {
         }
     }
 
+    // Give the compositor a few frames to map the lock surfaces before PAM spawns.
+    Timer {
+        id: pamStartTimer
+        interval: 180
+        repeat: false
+        onTriggered: root.pamStart()
+    }
+
+    Timer {
+        id: unlockCommitTimer
+        interval: 260
+        repeat: false
+        onTriggered: {
+            if (!root.unlocking)
+                return;
+            root.lockRequested = false;
+            root.unlocking = false;
+            EventBus.emit(Events.LOCK_STATE_CHANGED, false);
+        }
+    }
+
     Timer {
         id: dpmsTimer
         interval: Math.max(1, App.dpmsOffAfterLockSec) * 1000
@@ -312,16 +336,19 @@ Singleton {
             if (required && root._testMode && root._pendingTestPassword !== "") {
                 const password = root._pendingTestPassword;
                 root._pendingTestPassword = "";
+                root.pamVerifying = true;
                 pam.respond(password);
             } else if (required && !root._testMode && root.passwordBuffer !== "") {
                 const answer = root.passwordBuffer;
                 root.passwordBuffer = "";
+                root.pamVerifying = true;
                 pam.respond(answer);
             }
         }
 
         function onCompleted(result) {
             root.pamBusy = false;
+            root.pamVerifying = false;
             root._testMode = false;
             root._pendingTestPassword = "";
             let outcome = "error";
@@ -357,6 +384,7 @@ Singleton {
         }
 
         function onError(error) {
+            root.pamVerifying = false;
             console.warn("[LockService] PAM error: " + PamError.toString(error));
             root.lastError = qsTr("PAM error: %1").arg(PamError.toString(error));
             root.pamStatus = root.lastError;
@@ -491,9 +519,16 @@ Singleton {
 
     // --- DPMS ---
     function restartDpmsTimer(): void {
-        dpmsTimer.stop();
-        if (!root.lockRequested || !lock.secure || App.dpmsOffAfterLockSec <= 0 || root.killSwitch)
+        const interval = Math.max(1, App.dpmsOffAfterLockSec) * 1000;
+        if (!root.lockRequested || !lock.secure || App.dpmsOffAfterLockSec <= 0 || root.killSwitch) {
+            if (dpmsTimer.running)
+                dpmsTimer.stop();
             return;
+        }
+        if (dpmsTimer.running && dpmsTimer.interval === interval)
+            return;
+        dpmsTimer.stop();
+        dpmsTimer.interval = interval;
         console.info("[LockService] DPMS timer armed: " + App.dpmsOffAfterLockSec + "s");
         dpmsTimer.restart();
     }
@@ -589,6 +624,7 @@ Singleton {
         root.lastError = "";
         root.pamStatus = isTest ? qsTr("Testing PAM…") : qsTr("Enter password");
         root.pamBusy = true;
+        root.pamVerifying = false;
         if (!pam.start()) {
             root.pamBusy = false;
             root._testMode = false;
@@ -607,6 +643,7 @@ Singleton {
     function pamRespond(text: string): bool {
         if (!pam.responseRequired)
             return false;
+        root.pamVerifying = true;
         pam.respond(text);
         return true;
     }
@@ -615,6 +652,7 @@ Singleton {
         if (pam.active)
             pam.abort();
         root.pamBusy = false;
+        root.pamVerifying = false;
         root._testMode = false;
         root._pendingTestPassword = "";
         root.passwordBuffer = "";
@@ -663,14 +701,18 @@ Singleton {
 
     // --- lock / unlock ---
     function lock(): void {
-        if (root.killSwitch || !App.lockEnabled || root.lockRequested) {
+        if (root.killSwitch || !App.lockEnabled || root.lockRequested || root.unlocking) {
             console.warn("[LockService] lock refused (killSwitch=" + root.killSwitch + " enabled=" + App.lockEnabled + " locked=" + root.lockRequested + ")");
             return;
         }
         root.stopDim();
+        pamStartTimer.stop();
+        unlockCommitTimer.stop();
         root.chooseAuthScreen();
+        root.unlocking = false;
         root.lockRequested = true;
         root.passwordBuffer = "";
+        root.pamVerifying = false;
         root.failedAttempts = 0;
         root.lastError = "";
         root.pamStatus = qsTr("Enter password");
@@ -678,25 +720,28 @@ Singleton {
         EventBus.emit(Events.REQUEST_LOCK);
         EventBus.emit(Events.LOCK_STATE_CHANGED, true);
         Qt.callLater(root.restartDpmsTimer);
-        Qt.callLater(root.pamStart);
+        pamStartTimer.start();
         Qt.callLater(root.restorePasswordFocus);
     }
 
     function finishUnlock(reason: string): void {
-        if (!root.lockRequested)
+        if (!root.lockRequested || root.unlocking)
             return;
         console.info("[LockService] unlock (" + reason + ")");
         dpmsTimer.stop();
+        pamStartTimer.stop();
         root.dpmsOn("unlock");
-        root.lockRequested = false;
+        Brightness.restoreDim();
         root.passwordBuffer = "";
         root.pamBusy = false;
+        root.pamVerifying = false;
         root._testMode = false;
         root._pendingTestPassword = "";
         root.lastError = "";
         root.pamStatus = qsTr("Ready");
-        Brightness.restoreDim();
-        EventBus.emit(Events.LOCK_STATE_CHANGED, false);
+        root.unlocking = true;
+        EventBus.emit(Events.REQUEST_UNLOCK);
+        unlockCommitTimer.start();
     }
 
     function unlock(): void {

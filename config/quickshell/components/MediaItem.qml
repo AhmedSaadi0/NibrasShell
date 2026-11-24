@@ -13,6 +13,8 @@ Item {
     // "High": جودة كاملة، "Low": أداء عالي (دقة أقل)
     property string quality: "High"
     property bool muted: false
+    // Lock surfaces set this so cached wallpapers are present on frame 1.
+    property bool syncLoad: false
 
     // --- State & Getters ---
     readonly property bool isVideoType: _isVideo(source)
@@ -52,7 +54,7 @@ Item {
     Loader {
         id: loader
         anchors.fill: parent
-        asynchronous: true
+        asynchronous: !mItem.syncLoad
         sourceComponent: {
             if (!mItem.source)
                 return undefined;
@@ -119,7 +121,7 @@ Item {
             id: img
             anchors.fill: parent
             fillMode: Image.PreserveAspectCrop
-            asynchronous: true
+            asynchronous: !mItem.syncLoad
             cache: true
 
             source: mItem.source
