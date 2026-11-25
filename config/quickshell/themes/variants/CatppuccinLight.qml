@@ -53,7 +53,7 @@ BaseTheme {
     _hyprShadowColor: Qt.rgba(0.051, 0.051, 0.051, 0.333)
 
     // الألوان الرئيسية لـ Catppuccin Latte
-    _primary: Qt.rgba(0.106, 0.525, 0.796, 1)                     // Latte Blue (#1e66f5)
+    _primary: Qt.rgba(0.1176470588, 0.4, 0.9607843137, 1)         // Latte Blue (#1e66f5)
     _onPrimary: Qt.rgba(1, 1, 1, 1)
 
     _secondary: Qt.rgba(0.918, 0.463, 0.796, 1)                   // Latte Pink (#ea76cb)
@@ -80,7 +80,7 @@ BaseTheme {
     _onSurfaceVariant: Qt.rgba(0.424, 0.439, 0.525, 1)            // Subtext0 (#6c6f85)
 
     _primaryContainer: Qt.rgba(0.824, 0.902, 0.988, 1)
-    _onPrimaryContainer: Qt.rgba(0.106, 0.325, 0.596, 1)
+    _onPrimaryContainer: Qt.rgba(0.1176470588, 0.4, 0.9607843137, 1)
     _secondaryContainer: Qt.rgba(0.992, 0.875, 0.914, 1)
     _onSecondaryContainer: Qt.rgba(0.518, 0.153, 0.424, 1)
     _tertiaryContainer: Qt.rgba(0.886, 0.937, 0.875, 1)
@@ -92,7 +92,7 @@ BaseTheme {
     _outlineVariant: Qt.rgba(0.800, 0.816, 0.855, 1)              // Surface0 (#ccd0da)
     _inverseSurface: Qt.rgba(0.298, 0.310, 0.412, 1)
     _onInverseSurface: Qt.rgba(0.937, 0.945, 0.961, 1)
-    _inversePrimary: Qt.rgba(0.537, 0.706, 0.980, 1)
+    _inversePrimary: Qt.rgba(0.1176470588, 0.4, 0.9607843137, 1)
     _shadow: Qt.rgba(0.133, 0.133, 0.133, 1)
     _scrim: Qt.rgba(0, 0, 0, 1)
     _enableWallpaperBlur: true

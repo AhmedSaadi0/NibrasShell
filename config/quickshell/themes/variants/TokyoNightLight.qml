@@ -13,7 +13,7 @@ BaseTheme {
 
     _primary: Qt.rgba(0.18039216101169586, 0.4901960790157318, 0.9137254953384399, 1)           // Light Blue
     _onPrimary: Qt.rgba(0.9137254953384399, 0.9137254953384399, 0.9254902005195618, 1)         // Light Base
-    _secondary: Qt.rgba(0.47058823704719543, 0.27843138575553894, 0.7411764860153198, 1)         // Light Purple
+    _secondary: Qt.rgba(0.5960784314, 0.3294117647, 0.9450980392, 1)                              // Tokyo Night Day magenta (#9854f1)
     _onSecondary: Qt.rgba(0.9137254953384399, 0.9137254953384399, 0.9254902005195618, 1)
     _tertiary: Qt.rgba(0, 0.4431372582912445, 0.5921568870544434, 1)           // Light Cyan
     _onTertiary: Qt.rgba(0.9137254953384399, 0.9137254953384399, 0.9254902005195618, 1)
@@ -36,7 +36,7 @@ BaseTheme {
     _primaryContainer: Qt.rgba(0.8117647171020508, 0.8784313797950745, 0.9764705896377563, 1)             // Light Blue Selection
     _onPrimaryContainer: Qt.rgba(0.18039216101169586, 0.4901960790157318, 0.9137254953384399, 1)
     _secondaryContainer: Qt.rgba(0.8980392217636108, 0.8588235378265381, 0.9607843160629272, 1)           // Light Purple Selection
-    _onSecondaryContainer: Qt.rgba(0.47058823704719543, 0.27843138575553894, 0.7411764860153198, 1)
+    _onSecondaryContainer: Qt.rgba(0.5960784314, 0.3294117647, 0.9450980392, 1)
     _tertiaryContainer: Qt.rgba(0.8392156958580017, 0.9333333373069763, 0.9607843160629272, 1)            // Light Cyan Selection
     _onTertiaryContainer: Qt.rgba(0, 0.4431372582912445, 0.5921568870544434, 1)
     _errorContainer: Qt.rgba(0.9921568632125854, 0.8666666746139526, 0.9019607901573181, 1)               // Light Red Selection

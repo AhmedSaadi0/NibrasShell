@@ -26,8 +26,8 @@ BaseTheme {
     _onError: Qt.rgba(1, 1, 1, 1)
 
     // --- أسطح وخلفيات دراكولا الفاتحة الرسمية ---
-    _surface: Qt.rgba(0.973, 0.973, 0.949, 1)                     // Dracula Inverted Background (#f8f8f2)
-    _onSurface: Qt.rgba(0.157, 0.165, 0.212, 1)                   // Dracula Dark Background as Text (#282a36)
+    _surface: Qt.rgba(1, 0.9843137255, 0.9215686275, 1)           // Alucard background (#fffbeb)
+    _onSurface: Qt.rgba(0.1215686275, 0.1215686275, 0.1215686275, 1) // Alucard foreground (#1f1f1f)
     _surfaceDim: Qt.rgba(0.849964, 0.849964, 0.828999, 1)
     _surfaceBright: Qt.rgba(1.000000, 1.000000, 1.000000, 1)
 

@@ -22,7 +22,7 @@ BaseTheme {
     _onError: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)
 
     _surface: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)                        // base3
-    _onSurface: Qt.rgba(0.296740, 0.361377, 0.384881, 1)
+    _onSurface: Qt.rgba(0.3450980392, 0.431372549, 0.4588235294, 1)  // Solarized base01 (#586e75)
     _surfaceDim: Qt.rgba(0.866103, 0.842139, 0.777096, 1)
     _surfaceBright: Qt.rgba(1.000000, 1.000000, 1.000000, 1)
     _surfaceContainerLowest: Qt.rgba(1.000000, 1.000000, 1.000000, 1)
