@@ -281,7 +281,7 @@ Item {
                     id: tileLock
                     icon: "\uf023"
                     label: qsTr("Lock")
-                    accentColor: theme.colors.primary
+                    accentColor: theme.colors.onTertiaryContainer
                     onClicked: {
                         // Drop the power menu's exclusive keyboard focus first.
                         root.close();
