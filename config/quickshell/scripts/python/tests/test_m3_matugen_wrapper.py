@@ -1,12 +1,22 @@
 import hashlib
+import importlib.util
 import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "m3"))
 import plasma_color  # noqa: E402
+
+_dynamic_spec = importlib.util.spec_from_file_location(
+    "dynamic_m3", Path(__file__).resolve().parents[1] / "m3" / "dynamic-m3.py"
+)
+dynamic_m3 = importlib.util.module_from_spec(_dynamic_spec)
+_dynamic_spec.loader.exec_module(dynamic_m3)
 
 
 class Completed:
@@ -49,6 +59,101 @@ class MatugenWrapperTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             plasma_color.ColorExporter("x.png", "dark", 2, 1.5)
 
+    def test_quickshell_palette_mapping_is_complete(self):
+        payload = fake_payload()
+        exporter = plasma_color.ColorExporter("wallpaper.png", "light", 2, 0.0)
+        palette = exporter._quickshell_palette(payload)
+
+        self.assertEqual(len(plasma_color.QML_COLOR_TOKENS), 34)
+        self.assertEqual(set(palette), set(plasma_color.QML_COLOR_TOKENS))
+        self.assertTrue(
+            set(plasma_color.QML_COLOR_TOKENS.values()).issubset(plasma_color.COLOR_TOKENS)
+        )
+        self.assertEqual(
+            plasma_color.QML_COLOR_TOKENS["_onInverseSurface"], "inverse_on_surface"
+        )
+
+        for qml_key, token in plasma_color.QML_COLOR_TOKENS.items():
+            expected_index = plasma_color.COLOR_TOKENS.index(token) + 64
+            self.assertEqual(palette[qml_key], f"#{expected_index:06x}")
+
+    def test_quickshell_palette_normalizes_short_hex(self):
+        payload = fake_payload(modes=("light",))
+        payload["colors"]["primary"]["light"]["color"] = "#abc"
+        exporter = plasma_color.ColorExporter("wallpaper.png", "light", 2, 0.0)
+
+        self.assertEqual(exporter._quickshell_palette(payload)["_primary"], "#aabbcc")
+
+    def test_missing_matugen_token_fails(self):
+        payload = fake_payload()
+        del payload["colors"]["primary"]
+
+        def runner(command, **kwargs):
+            return Completed(stdout=json.dumps(payload))
+
+        exporter = plasma_color.ColorExporter(
+            "wallpaper.png", "dark", 2, 0.0, runner=runner
+        )
+        with self.assertRaisesRegex(ValueError, "missing colors.primary"):
+            exporter._matugen_json()
+
+    def test_dynamic_m3_emits_one_stdout_palette_line(self):
+        envelope = {
+            "mode": "light",
+            "colors": {"_primary": "#123456"},
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "wallpaper.png"
+            image.write_bytes(b"image")
+            stdout = StringIO()
+            stderr = StringIO()
+
+            with patch.object(dynamic_m3, "ColorExporter") as exporter_type:
+                exporter_type.return_value.apply.return_value = ("digest", envelope)
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    dynamic_m3.main([str(image), "-m", "light"])
+
+        lines = stdout.getvalue().strip().splitlines()
+        palette_lines = [
+            line for line in lines if line.startswith(dynamic_m3.M3_PALETTE_PREFIX)
+        ]
+        self.assertEqual(len(palette_lines), 1)
+        self.assertEqual(lines[-1], palette_lines[0])
+        self.assertEqual(
+            json.loads(palette_lines[0][len(dynamic_m3.M3_PALETTE_PREFIX) :]),
+            envelope,
+        )
+        self.assertIn("[*] Processing:", stdout.getvalue())
+        self.assertIn("[+] Plasma colors applied successfully.", stdout.getvalue())
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_dynamic_m3_failure_emits_error_without_palette(self):
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "wallpaper.png"
+            image.write_bytes(b"image")
+            stdout = StringIO()
+            stderr = StringIO()
+
+            with patch.object(dynamic_m3, "ColorExporter") as exporter_type:
+                exporter_type.return_value.apply.side_effect = RuntimeError("boom")
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    with self.assertRaises(SystemExit) as raised:
+                        dynamic_m3.main([str(image), "-m", "light"])
+
+        self.assertEqual(raised.exception.code, 1)
+        self.assertNotIn(dynamic_m3.M3_PALETTE_PREFIX, stdout.getvalue())
+        error_lines = [
+            line for line in stdout.getvalue().splitlines()
+            if line.startswith(dynamic_m3.M3_ERROR_PREFIX)
+        ]
+        self.assertEqual(len(error_lines), 1)
+        error_payload = json.loads(
+            error_lines[0][len(dynamic_m3.M3_ERROR_PREFIX) :]
+        )
+        self.assertIn("boom", error_payload["message"])
+        self.assertEqual(stderr.getvalue(), "")
+
     def test_outputs_and_commands(self):
         calls = []
 
@@ -62,8 +167,10 @@ class MatugenWrapperTest(unittest.TestCase):
             exporter = plasma_color.ColorExporter(
                 "wallpaper.png", "dark", 2, 0.25, home=home, runner=runner
             )
-            digest = exporter.apply()
+            digest, envelope = exporter.apply()
             base = Path(home)
+            self.assertEqual(envelope["mode"], "dark")
+            self.assertEqual(set(envelope["colors"]), set(plasma_color.QML_COLOR_TOKENS))
 
             matugen_command = calls[0]
             self.assertEqual(matugen_command[0], "matugen")
@@ -100,7 +207,7 @@ class MatugenWrapperTest(unittest.TestCase):
             )
             self.assertEqual(color_sections, 24)
             self.assertIn(f"Description={name}", text)
-            self.assertIn("Opacity=0.8", text)
+            self.assertIn("Opacity=0.9", text)
             self.assertNotIn("\nity=", text)
             self.assertFalse((konsole_dir / "MaterialYouAlt.colorscheme").exists())
 

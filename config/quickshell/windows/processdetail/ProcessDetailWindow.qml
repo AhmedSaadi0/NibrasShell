@@ -495,7 +495,7 @@ ApplicationWindow {
         property string text: ""
         property string icon: ""
         property color bgColor: "transparent"
-        property color fgColor: "white"
+        property color fgColor: theme.colors.onSurfaceVariant
 
         height: theme.dimensions.chipHeight
         implicitWidth: chipRow.implicitWidth + 24

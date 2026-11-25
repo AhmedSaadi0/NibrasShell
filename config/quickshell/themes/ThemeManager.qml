@@ -37,6 +37,7 @@ Singleton {
     property var _pendingCacheData: null
     property string _pendingThemeName: ""
     property string _selectedThemeName: ""
+    property int _latestM3RequestId: -1
     property bool _isApplyingTheme: false
     property bool _clockFontPreviewing: false
     // خط المعاينة الحية — يقرأه DesktopClock مباشرة (دون سلاسل ربط وسيطة)
@@ -162,7 +163,15 @@ Singleton {
         onWallpaperReady: path => {
             if (selectedTheme && selectedTheme.systemSettings.enableDynamicColoring) {
                 const settings = selectedTheme.systemSettings;
-                bridgeSystem.applyM3(path, settings.themeMode, true, settings.dynamicColoringSchemeVariant, settings.dynamicColoringContrast, settings.konsoleProfile);
+                root._latestM3RequestId = bridgeSystem.applyM3({
+                    wallpaperPath: path,
+                    themeMode: settings.themeMode,
+                    enabled: true,
+                    scheme: settings.dynamicColoringSchemeVariant,
+                    contrast: settings.dynamicColoringContrast,
+                    konsoleProfile: settings.konsoleProfile,
+                    themeName: selectedTheme.themeName
+                });
             }
             root.wallpaperChanged(path);
         }
@@ -181,12 +190,12 @@ Singleton {
 
     SystemBridge {
         id: bridgeSystem
-        onM3Applied: Qt.callLater(() => {
-            if (selectedTheme)
-                bridgeHyprland.applyConfig(selectedTheme.hyprlandConfiguration);
-            root.m3Applied();
-        })
-        onM3Failed: reason => {
+        onM3Applied: (palette, meta) => root._applyM3Result(palette, meta)
+        onM3Failed: (reason, meta) => {
+            if (!root._isCurrentM3Result(meta)) {
+                console.info("[ThemeManager] Ignoring stale M3 failure:", reason);
+                return;
+            }
             console.error("[ThemeManager] M3 failed:", reason);
             root.m3Failed(reason);
         }
@@ -229,6 +238,9 @@ Singleton {
 
         console.info(`[ThemeManager] Phase 1: Request received for ${themeName}`);
         root.themeLoadStarted(themeName);
+
+        bridgeSystem.invalidateM3Requests();
+        root._latestM3RequestId = bridgeSystem.latestM3RequestId;
 
         root._pendingThemeName = themeName;
         root._selectedThemeName = themeName;
@@ -337,8 +349,47 @@ Singleton {
         }
     }
 
+    function _isCurrentM3Result(meta) {
+        const theme = selectedTheme;
+        if (!theme || !meta)
+            return false;
+
+        const settings = theme.systemSettings;
+        if (!settings || !settings.enableDynamicColoring)
+            return false;
+
+        const expectedProfile = settings.konsoleProfile || "MaterialYouAlt.profile";
+        return meta.requestId === root._latestM3RequestId
+            && meta.requestId === bridgeSystem.latestM3RequestId
+            && meta.themeName === theme.themeName
+            && meta.themeName === themeLoader.currentThemeName
+            && meta.themeMode === settings.themeMode
+            && meta.wallpaperPath === wallpaperController.currentWallpaperPath
+            && meta.scheme === settings.dynamicColoringSchemeVariant
+            && Math.abs(Number(meta.contrast) - Number(settings.dynamicColoringContrast)) < 1e-6
+            && meta.konsoleProfile === expectedProfile;
+    }
+
+    function _applyM3Result(palette, meta) {
+        if (!root._isCurrentM3Result(meta)) {
+            console.info("[ThemeManager] Ignoring stale M3 palette for", meta ? meta.themeName : "unknown theme");
+            return;
+        }
+
+        if (!themeSerializer.applyM3Palette(selectedTheme, palette)) {
+            root.m3Failed("Invalid Matugen palette");
+            return;
+        }
+
+        bridgeHyprland.applyConfig(selectedTheme.hyprlandConfiguration);
+        root.selectedThemeUpdated();
+        root.m3Applied();
+    }
+
     function _applyToSystem(theme) {
         console.info("[ThemeManager] Applying Final Configuration...");
+        bridgeSystem.invalidateM3Requests();
+        root._latestM3RequestId = bridgeSystem.latestM3RequestId;
         root._isApplyingTheme = true;
         bridgeHyprland.applyConfig(theme.hyprlandConfiguration);
         bridgeSystem.applySystemTheme(theme.systemSettings, theme.colors, theme.typography);

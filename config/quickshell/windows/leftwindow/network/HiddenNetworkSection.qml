@@ -79,7 +79,7 @@ ColumnLayout {
                     color: ThemeManager.selectedTheme.colors.onSurface
                     placeholderTextColor: ThemeManager.selectedTheme.colors.onSurfaceVariant
                     background: Rectangle {
-                        color: ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.5)
+                        color: ThemeManager.selectedTheme.colors.surfaceContainerHighest
                         radius: ThemeManager.selectedTheme.dimensions.elementRadius
                         border.color: ThemeManager.selectedTheme.colors.onSurface.alpha(0.1)
                         border.width: 1
@@ -95,7 +95,7 @@ ColumnLayout {
                     color: ThemeManager.selectedTheme.colors.onSurface
                     placeholderTextColor: ThemeManager.selectedTheme.colors.onSurfaceVariant
                     background: Rectangle {
-                        color: ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.5)
+                        color: ThemeManager.selectedTheme.colors.surfaceContainerHighest
                         radius: ThemeManager.selectedTheme.dimensions.elementRadius
                         border.color: ThemeManager.selectedTheme.colors.onSurface.alpha(0.1)
                         border.width: 1
@@ -105,7 +105,7 @@ ColumnLayout {
                 MButton {
                     Layout.fillWidth: true
                     text: qsTr("Connect")
-                    normalBackground: ThemeManager.selectedTheme.colors.primary.darker(1.1)
+                    normalBackground: ThemeManager.selectedTheme.colors.primary
                     normalForeground: ThemeManager.selectedTheme.colors.onPrimary
                     enabled: hiddenSsidField.text.length > 0
                     onClicked: {

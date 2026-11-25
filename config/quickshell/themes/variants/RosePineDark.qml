@@ -23,13 +23,13 @@ BaseTheme {
 
     _surface: Qt.rgba(0.09803921729326248, 0.09019608050584793, 0.1411764770746231, 1)                        // Base
     _onSurface: Qt.rgba(0.8784313797950745, 0.8705882430076599, 0.95686274766922, 1)                      // Text
-    _surfaceDim: Qt.rgba(0.07058823853731155, 0.06666667014360428, 0.11372549086809158, 1)                     // Darker than base
-    _surfaceBright: Qt.rgba(0.14901961386203766, 0.13725490868091583, 0.22745098173618317, 1)                  // Overlay
-    _surfaceContainerLowest: Qt.rgba(0.05882352963089943, 0.054901961237192154, 0.10196078568696976, 1)
-    _surfaceContainerLow: Qt.rgba(0.07058823853731155, 0.06666667014360428, 0.11372549086809158, 1)
-    _surfaceContainer: Qt.rgba(0.09803921729326248, 0.09019608050584793, 0.1411764770746231, 1)               // Base
-    _surfaceContainerHigh: Qt.rgba(0.12156862765550613, 0.11372549086809158, 0.18039216101169586, 1)           // Surface
-    _surfaceContainerHighest: Qt.rgba(0.14901961386203766, 0.13725490868091583, 0.22745098173618317, 1)        // Overlay
+    _surfaceDim: Qt.rgba(0.073048, 0.067204, 0.105189, 1)
+    _surfaceBright: Qt.rgba(0.230307, 0.223614, 0.267118, 1)
+    _surfaceContainerLowest: Qt.rgba(0.061195, 0.056299, 0.088120, 1)
+    _surfaceContainerLow: Qt.rgba(0.121599, 0.113960, 0.163609, 1)
+    _surfaceContainer: Qt.rgba(0.145770, 0.138342, 0.186625, 1)
+    _surfaceContainerHigh: Qt.rgba(0.170517, 0.163304, 0.210188, 1)
+    _surfaceContainerHighest: Qt.rgba(0.195803, 0.188810, 0.234265, 1)
     _surfaceVariant: Qt.rgba(0.14901961386203766, 0.13725490868091583, 0.22745098173618317, 1)
     _onSurfaceVariant: Qt.rgba(0.5647059082984924, 0.5490196347236633, 0.6666666865348816, 1)               // Subtle
 

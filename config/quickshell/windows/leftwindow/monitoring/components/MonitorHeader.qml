@@ -19,7 +19,7 @@ Item {
     property bool isDetailsOpen: false
 
     property color statusColor: _colors.tertiary
-    property color statusTextColor: _colors.onPrimaryContainer
+    property color statusTextColor: _colors.onSurface
     property color statusBgColor: _colors.surfaceContainerHigh
 
     // =========================================================================

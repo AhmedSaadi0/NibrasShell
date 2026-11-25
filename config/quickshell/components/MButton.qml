@@ -143,6 +143,8 @@ Button {
     property var hoveredForeground: root.isActive ? root.activeForeground : root.normalForeground
     property var downForeground: root.isActive ? root.activeForeground : root.normalForeground
 
+    property real hoverOpacity: 0.08
+
     property int topLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / Consts.M3_BUTTON_RADIUS_DIVISOR
     property int topRightRadius: ThemeManager.selectedTheme.dimensions.elementRadius / Consts.M3_BUTTON_RADIUS_DIVISOR
     property int bottomLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / Consts.M3_BUTTON_RADIUS_DIVISOR
@@ -274,7 +276,7 @@ Button {
                 } else if (root.down) {
                     return 0.12;
                 } else if (root.hovered) {
-                    return 0.08;
+                    return root.hoverOpacity;
                 }
                 return 0.0;
             }

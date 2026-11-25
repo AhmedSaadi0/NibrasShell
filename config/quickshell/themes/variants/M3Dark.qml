@@ -43,14 +43,14 @@ BaseTheme {
     // تدرج الأسطح الديناميكي للوضع الداكن باستخدام مرجع الخلفية الأساسي للنظام
     _surface: Kirigami.Theme.backgroundColor
     _onSurface: Kirigami.Theme.textColor
-    _surfaceDim: Qt.darker(_surface, 1.25)
-    _surfaceBright: Qt.lighter(_surface, 1.8)
+    _surfaceDim: Qt.darker(_surface, 1.2)
+    _surfaceBright: Qt.lighter(_surface, 2.2)
 
-    _surfaceContainerLowest: Qt.darker(_surface, 1.8)
-    _surfaceContainerLow: Qt.darker(_surface, 1.7)
-    _surfaceContainer: Qt.darker(Kirigami.Theme.alternateBackgroundColor, 1.6)
-    _surfaceContainerHigh: Qt.lighter(_surfaceContainer, 1.2)
-    _surfaceContainerHighest: Qt.lighter(_surfaceContainer, 1.5)
+    _surfaceContainerLowest: Qt.darker(_surface, 1.5)
+    _surfaceContainerLow: Qt.lighter(_surface, 1.15)
+    _surfaceContainer: Qt.lighter(_surface, 1.35)
+    _surfaceContainerHigh: Qt.lighter(_surface, 1.6)
+    _surfaceContainerHighest: Qt.lighter(_surface, 1.9)
 
     _surfaceVariant: Kirigami.Theme.alternateBackgroundColor
     _onSurfaceVariant: Qt.rgba(_onSurface.r, _onSurface.g, _onSurface.b, 0.7)

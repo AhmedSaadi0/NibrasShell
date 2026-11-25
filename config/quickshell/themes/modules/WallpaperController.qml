@@ -165,8 +165,8 @@ Item {
 
         wallpaperReady(path);
 
-        // Persist state
-        Theme.ThemeManager.updateAndApplyTheme({
+        // Persist state without reapplying the theme: wallpaperReady already started M3.
+        Theme.ThemeManager.updateThemePropertyOnly({
             "_selectedWallpaperIndex": root._currentIndex
         }, true);
     }

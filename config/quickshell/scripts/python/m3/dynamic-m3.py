@@ -4,14 +4,25 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 from plasma_color import SCHEME_TYPES, ColorExporter
 
+M3_PALETTE_PREFIX = "__M3_PALETTE__:"
+M3_ERROR_PREFIX = "__M3_ERROR__:"
 
-def main() -> None:
+
+def _emit_error(message: str) -> None:
+    payload = json.dumps(
+        {"message": message}, ensure_ascii=False, separators=(",", ":")
+    )
+    print(M3_ERROR_PREFIX + payload, flush=True)
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Generate KDE Plasma theme colors from a wallpaper using matugen."
     )
@@ -52,14 +63,16 @@ def main() -> None:
         help="Fallback seed color passed to matugen if extraction fails.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not -1.0 <= args.contrast <= 1.0:
-        parser.error("--contrast must be between -1.0 and 1.0")
+        _emit_error("--contrast must be between -1.0 and 1.0")
+        sys.exit(2)
 
     image_path = Path(args.image_path).expanduser()
     if not image_path.is_file():
-        parser.error(f"wallpaper file not found: {image_path}")
+        _emit_error(f"wallpaper file not found: {image_path}")
+        sys.exit(2)
 
     print(f"[*] Processing: {image_path}")
     print(
@@ -68,7 +81,7 @@ def main() -> None:
     )
 
     try:
-        ColorExporter(
+        _digest, envelope = ColorExporter(
             wallpaper_path=image_path,
             theme_mode=args.mode,
             scheme_variant=args.scheme_variant,
@@ -76,12 +89,17 @@ def main() -> None:
             fallback_color=args.fallback_color,
         ).apply()
         print("[+] Plasma colors applied successfully.")
+        print(
+            M3_PALETTE_PREFIX
+            + json.dumps(envelope, ensure_ascii=False, separators=(",", ":")),
+            flush=True,
+        )
     except subprocess.CalledProcessError as e:
         detail = e.stderr.strip() if e.stderr else str(e)
-        print(f"[!] Command failed: {detail}", file=sys.stderr)
+        _emit_error(f"Command failed: {detail}")
         sys.exit(1)
     except Exception as e:
-        print(f"[!] Error applying colors: {e}", file=sys.stderr)
+        _emit_error(f"Error applying colors: {e}")
         sys.exit(1)
 
 

@@ -12,8 +12,8 @@ MenuCard {
 
     title: qsTr("Quick Actions")
     icon: ""
-    cardColor: ThemeManager.selectedTheme.colors.secondaryContainer.alpha(0.7)
-    textColor: ThemeManager.selectedTheme.colors.onSecondaryContainer
+    cardColor: ThemeManager.selectedTheme.colors.surfaceContainer
+    textColor: ThemeManager.selectedTheme.colors.onSurface
 
     function _findWifiDevice() {
         return Networking.devices.values.find(d => d.type === DeviceType.Wifi) || null;
@@ -69,10 +69,9 @@ MenuCard {
             isActive: root.wifiEnabled && !root.airplaneEnabled
             onClicked: root.toggleAction("wifi")
 
-            normalBackground: root.textColor.alpha(0.1)
-            normalForeground: root.textColor
-            hoveredBackground: root.cardColor.alpha(0.2)
-            downForeground: root.textColor
+            normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+            normalForeground: ThemeManager.selectedTheme.colors.onSurface
+            hoverOpacity: 0.16
         }
 
         MButton {
@@ -85,10 +84,9 @@ MenuCard {
             enabled: root.bluetoothAvailable
             isActive: root.bluetoothEnabled && !root.airplaneEnabled
             onClicked: root.toggleAction("bluetooth")
-            normalBackground: root.textColor.alpha(0.1)
-            normalForeground: root.textColor
-            hoveredBackground: root.cardColor.alpha(0.2)
-            downForeground: root.textColor
+            normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+            normalForeground: ThemeManager.selectedTheme.colors.onSurface
+            hoverOpacity: 0.16
         }
 
         MButton {
@@ -101,10 +99,9 @@ MenuCard {
             enabled: root.airplaneAvailable
             isActive: root.airplaneEnabled
             onClicked: root.toggleAction("airplane")
-            normalBackground: root.textColor.alpha(0.1)
-            normalForeground: root.textColor
-            hoveredBackground: root.cardColor.alpha(0.2)
-            downForeground: root.textColor
+            normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+            normalForeground: ThemeManager.selectedTheme.colors.onSurface
+            hoverOpacity: 0.16
         }
     }
 

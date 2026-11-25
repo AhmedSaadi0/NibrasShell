@@ -179,39 +179,39 @@ Controls.ApplicationWindow {
                     , systemComp.createObject(contentStack, {
                         visible: false
                     })      // Index 3
+                    , lockIdleComp.createObject(contentStack, {
+                        visible: false
+                    })       // Index 4
 
                     ,
 
                     // Appearance Section
                     wallpaperSettingsComp.createObject(contentStack, {
                         visible: false
-                    }) // Index 4
+                    }) // Index 5
                     , colorsSettingsComp.createObject(contentStack, {
                         visible: false
-                    })    // Index 5
+                    })    // Index 6
                     , layoutFontSettingsComp.createObject(contentStack, {
                         visible: false
-                    })// Index 6
+                    })// Index 7
                     , desktopClockComp.createObject(contentStack, {
                         visible: false
-                    })      // Index 7
+                    })      // Index 8
                     , hyprlandSettingsComp.createObject(contentStack, {
                         visible: false
-                    })  // Index 8
+                    })  // Index 9
                     , integrationSettingsComp.createObject(contentStack, {
                         visible: false
-                    })// Index 9
+                    })// Index 10
 
                     ,
 
                     // Devices Section
                     audioDevicesComp.createObject(contentStack, {
                         visible: false
-                    })       // Index 10
-                    , monitorsSettingsComp.createObject(contentStack, {
-                        visible: false
                     })       // Index 11
-                    , lockIdleComp.createObject(contentStack, {
+                    , monitorsSettingsComp.createObject(contentStack, {
                         visible: false
                     })       // Index 12
                 ];

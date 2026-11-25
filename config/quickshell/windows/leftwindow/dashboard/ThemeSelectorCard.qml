@@ -23,8 +23,8 @@ Rectangle {
     width: parent.width
     radius: ThemeManager.selectedTheme.dimensions.elementRadius
     color: {
-        let base = ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.7);
-        return ThemeManager.selectedTheme._themeMode === "dark" ? Qt.lighter(base, 1.08) : Qt.darker(base, 1.05);
+        let base = ThemeManager.selectedTheme.colors.surfaceContainerLow;
+        return ThemeManager.selectedTheme._themeMode === "dark" ? Qt.darker(base, 1.05) : Qt.lighter(base, 1.05);
     }
     height: columnLayout.implicitHeight + 20
 
@@ -53,7 +53,7 @@ Rectangle {
             text: card.themeTitle
             font.bold: true
             font.pixelSize: ThemeManager.selectedTheme.typography.medium * 1.2
-            color: ThemeManager.selectedTheme.colors.onPrimaryContainer
+            color: ThemeManager.selectedTheme.colors.onSurface
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             Layout.bottomMargin: 4
@@ -68,10 +68,8 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 25
                 isActive: ThemeManager.selectedTheme.themeName === card.lightThemeName
-                normalBackground: {
-                    let base = ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.6);
-                    return ThemeManager.selectedTheme._themeMode === "dark" ? Qt.lighter(base, 1.3) : Qt.darker(base, 1.2);
-                }
+                normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+                hoverOpacity: 0.16
                 font.family: ThemeManager.selectedTheme.typography.iconFont
                 onClicked: {
                     ThemeManager.requestLoadTheme(card.lightThemeName);
@@ -88,10 +86,8 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 25
                 font.family: ThemeManager.selectedTheme.typography.iconFont
-                normalBackground: {
-                    let base = ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.6);
-                    return ThemeManager.selectedTheme._themeMode === "dark" ? Qt.lighter(base, 1.3) : Qt.darker(base, 1.2);
-                }
+                normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+                hoverOpacity: 0.16
                 isActive: ThemeManager.selectedTheme.themeName === card.darkThemeName
                 onClicked: {
                     ThemeManager.requestLoadTheme(card.darkThemeName);

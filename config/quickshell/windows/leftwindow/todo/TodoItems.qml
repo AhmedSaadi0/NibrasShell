@@ -217,7 +217,7 @@ ListView {
 
             color: {
                 if (taskCompleted)
-                    return Qt.rgba(colors.primaryContainer.r, colors.primaryContainer.g, colors.primaryContainer.b, 0.5);
+                    return colors.surfaceContainerHigh;
                 if (cardHover.hovered || isEditing)
                     return Qt.lighter(colors.surfaceContainerHigh, 1.2);
                 return colors.surfaceContainer;
