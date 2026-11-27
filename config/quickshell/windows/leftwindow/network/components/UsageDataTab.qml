@@ -80,7 +80,7 @@ ColumnLayout {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 42
-                        color: ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.45)
+                        color: ThemeManager.selectedTheme.colors.surfaceContainerHighest
                         border.color: ThemeManager.selectedTheme.colors.onSurfaceVariant.alpha(0.15)
                         border.width: 1
 

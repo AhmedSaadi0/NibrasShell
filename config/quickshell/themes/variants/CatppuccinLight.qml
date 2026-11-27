@@ -53,7 +53,7 @@ BaseTheme {
     _hyprShadowColor: Qt.rgba(0.051, 0.051, 0.051, 0.333)
 
     // الألوان الرئيسية لـ Catppuccin Latte
-    _primary: Qt.rgba(0.106, 0.525, 0.796, 1)                     // Latte Blue (#1e66f5)
+    _primary: Qt.rgba(0.1176470588, 0.4, 0.9607843137, 1)         // Latte Blue (#1e66f5)
     _onPrimary: Qt.rgba(1, 1, 1, 1)
 
     _secondary: Qt.rgba(0.918, 0.463, 0.796, 1)                   // Latte Pink (#ea76cb)
@@ -68,19 +68,19 @@ BaseTheme {
     // الخلفيات والأسطح
     _surface: Qt.rgba(0.937, 0.945, 0.961, 1)                     // Base (#eff1f5)
     _onSurface: Qt.rgba(0.298, 0.310, 0.412, 1)                   // Text (#4c4f69)
-    _surfaceDim: Qt.rgba(0.863, 0.878, 0.910, 1)                  // Crust (#dce0e8)
-    _surfaceBright: Qt.rgba(1, 1, 1, 1)
+    _surfaceDim: Qt.rgba(0.815829, 0.822794, 0.836725, 1)
+    _surfaceBright: Qt.rgba(1.000000, 1.000000, 1.000000, 1)
 
-    _surfaceContainerLowest: Qt.rgba(1, 1, 1, 1)
-    _surfaceContainerLow: Qt.rgba(0.902, 0.914, 0.937, 1)         // Mantle (#e6e9ef)
-    _surfaceContainer: Qt.rgba(0.937, 0.945, 0.961, 1)            // Base (#eff1f5)
-    _surfaceContainerHigh: Qt.rgba(0.863, 0.878, 0.910, 1)
-    _surfaceContainerHighest: Qt.rgba(0.800, 0.816, 0.855, 1)     // Surface0 (#ccd0da)
+    _surfaceContainerLowest: Qt.rgba(1.000000, 1.000000, 1.000000, 1)
+    _surfaceContainerLow: Qt.rgba(0.914736, 0.922546, 0.938166, 1)
+    _surfaceContainer: Qt.rgba(0.892574, 0.900194, 0.915436, 1)
+    _surfaceContainerHigh: Qt.rgba(0.859525, 0.866863, 0.881540, 1)
+    _surfaceContainerHighest: Qt.rgba(0.826713, 0.833771, 0.847888, 1)
     _surfaceVariant: Qt.rgba(0.863, 0.878, 0.910, 1)
     _onSurfaceVariant: Qt.rgba(0.424, 0.439, 0.525, 1)            // Subtext0 (#6c6f85)
 
     _primaryContainer: Qt.rgba(0.824, 0.902, 0.988, 1)
-    _onPrimaryContainer: Qt.rgba(0.106, 0.325, 0.596, 1)
+    _onPrimaryContainer: Qt.rgba(0.1176470588, 0.4, 0.9607843137, 1)
     _secondaryContainer: Qt.rgba(0.992, 0.875, 0.914, 1)
     _onSecondaryContainer: Qt.rgba(0.518, 0.153, 0.424, 1)
     _tertiaryContainer: Qt.rgba(0.886, 0.937, 0.875, 1)
@@ -92,7 +92,7 @@ BaseTheme {
     _outlineVariant: Qt.rgba(0.800, 0.816, 0.855, 1)              // Surface0 (#ccd0da)
     _inverseSurface: Qt.rgba(0.298, 0.310, 0.412, 1)
     _onInverseSurface: Qt.rgba(0.937, 0.945, 0.961, 1)
-    _inversePrimary: Qt.rgba(0.537, 0.706, 0.980, 1)
+    _inversePrimary: Qt.rgba(0.1176470588, 0.4, 0.9607843137, 1)
     _shadow: Qt.rgba(0.133, 0.133, 0.133, 1)
     _scrim: Qt.rgba(0, 0, 0, 1)
     _enableWallpaperBlur: true

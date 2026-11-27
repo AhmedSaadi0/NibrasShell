@@ -98,6 +98,18 @@ Singleton {
     property alias showDock: root.config.showDock
     property alias dockIconSize: root.config.dockIconSize
 
+    // Lock & Idle configs
+    property alias lockEnabled: root.config.lockEnabled
+    property alias autoLockEnabled: root.config.autoLockEnabled
+    property alias dimTimeoutSec: root.config.dimTimeoutSec
+    property alias lockTimeoutSec: root.config.lockTimeoutSec
+    property alias dpmsOffAfterLockSec: root.config.dpmsOffAfterLockSec
+    property alias autoSuspendSec: root.config.autoSuspendSec
+    property alias dimOverlayOpacity: root.config.dimOverlayOpacity
+    property alias dimBacklightPercent: root.config.dimBacklightPercent
+    property alias respectIdleInhibitors: root.config.respectIdleInhibitors
+    property alias lockOnSuspend: root.config.lockOnSuspend
+
     readonly property bool hasWindowsOnWorkspace: {
         if (!Hyprland.focusedWorkspace)
             return false;

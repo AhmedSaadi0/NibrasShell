@@ -146,7 +146,7 @@ BaseGeneralSettings {
                         text: ""
                         font.family: theme.typography.iconFont
                         font.pixelSize: 14
-                        normalForeground: theme.colors.onPrimary
+                        normalForeground: theme.colors.onTertiary
                         onClicked: avatarDialog.open()
                         cursorShape: Qt.PointingHandCursor
                     }

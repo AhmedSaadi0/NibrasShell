@@ -16,6 +16,7 @@ import "root:/windows/bottomlauncher"
 import "root:/windows/dock"
 import "root:/windows/poweroption"
 import "root:/windows/overlay"
+import "root:/windows/lock"
 import "root:/bars"
 import "root:/osd"
 import "root:/utils"
@@ -34,6 +35,7 @@ ShellRoot {
     property var settingsWindowInstance: null
     property var notificationsInstance: null
     readonly property var _networkService: NetworkService
+    readonly property var _lockService: LockService
     readonly property var _selectedTheme: ThemeManager.selectedTheme
 
     signal openLeftPanelRequested(int selectedIndex)
@@ -210,6 +212,15 @@ ShellRoot {
                 }
             }
 
+            // Invalid/placeholder outputs are skipped inside DimOverlay itself.
+            Variants {
+                model: Quickshell.screens
+                DimOverlay {
+                    required property ShellScreen modelData
+                    screen: modelData
+                }
+            }
+
             // 4. Global Panels (Single instance)
             LeftWindowFull {
                 id: leftPanelFull
@@ -234,6 +245,13 @@ ShellRoot {
 
             PowerMenuWindow {
                 id: powerMenuWindow
+            }
+
+            Connections {
+                target: Quickshell
+                function onScreensChanged() {
+                    LockService.restorePasswordFocus();
+                }
             }
 
             // Event listener for bottom launcher toggle from LeftBar
@@ -301,6 +319,30 @@ ShellRoot {
                 }
                 function toggleDock() {
                     EventBus.emit(Events.TOGGLE_DOCK);
+                }
+            }
+
+            IpcHandler {
+                target: "NibrasLock"
+
+                function pamTest(password: string): void {
+                    if (!LockService.testGate) {
+                        console.warn("[NibrasLock] pamTest refused: test env not set");
+                        return;
+                    }
+                    LockService.testPam(password);
+                }
+
+                function lock(): void {
+                    LockService.lock();
+                }
+
+                function unlock(): void {
+                    if (!LockService.testGate) {
+                        console.warn("[NibrasLock] unlock refused: test env not set");
+                        return;
+                    }
+                    LockService.unlock();
                 }
             }
         }

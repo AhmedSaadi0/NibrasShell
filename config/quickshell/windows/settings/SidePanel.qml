@@ -95,6 +95,12 @@ Rectangle {
                 pageIndex: 3
             },
             {
+                name: qsTr("Lock & Idle"),
+                icon: "\uf023",
+                type: "item",
+                pageIndex: 4
+            },
+            {
                 name: qsTr("Appearance"),
                 type: "header"
             },
@@ -102,37 +108,37 @@ Rectangle {
                 name: qsTr("Wallpaper Settings"),
                 icon: "",
                 type: "item",
-                pageIndex: 4
+                pageIndex: 5
             },
             {
                 name: qsTr("Color Settings"),
                 icon: "",
                 type: "item",
-                pageIndex: 5
+                pageIndex: 6
             },
             {
                 name: qsTr("Layout & Fonts"),
                 icon: "",
                 type: "item",
-                pageIndex: 6
+                pageIndex: 7
             },
             {
                 name: qsTr("Desktop & CLock"),
                 icon: "",
                 type: "item",
-                pageIndex: 7
+                pageIndex: 8
             },
             {
                 name: qsTr("Hyprland Settings"),
                 icon: "",
                 type: "item",
-                pageIndex: 8
+                pageIndex: 9
             },
             {
                 name: qsTr("Integration"),
                 icon: "󰒋",
                 type: "item",
-                pageIndex: 9
+                pageIndex: 10
             },
             {
                 name: qsTr("Devices"),
@@ -142,13 +148,13 @@ Rectangle {
                 name: qsTr("Audio Devices"),
                 icon: "",
                 type: "item",
-                pageIndex: 10
+                pageIndex: 11
             },
             {
                 name: qsTr("Monitors & Display"),
                 icon: "󰍹",
                 type: "item",
-                pageIndex: 11
+                pageIndex: 12
             }
         ]
 

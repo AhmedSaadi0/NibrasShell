@@ -37,6 +37,7 @@ Item {
 
     // تجميع الكل
     readonly property var allKeys: _colorKeys.concat(_dimKeys).concat(_typeKeys).concat(_hyprKeys).concat(_wallKeys).concat(_sysKeys).concat(_clockKeys)
+    readonly property var _m3ColorKeys: _colorKeys.filter(key => key !== "themeName")
 
     signal cacheFileUpdated
     signal keysRemoved
@@ -47,7 +48,10 @@ Item {
             return;
 
         let data = {};
+        const isDynamicColoring = themeInstance.systemSettings.enableDynamicColoring;
         for (const key of allKeys) {
+            if (isDynamicColoring && (key === "_hyprActiveBorder" || (key !== "themeName" && _colorKeys.includes(key))))
+                continue;
             if (themeInstance.hasOwnProperty(key)) {
                 data[key] = themeInstance[key];
             }
@@ -80,10 +84,12 @@ Item {
         let keys = Object.keys(jsonData);
         console.info(`[ThemeSerializer] Processing ${keys.length} keys from JSON.`);
 
-        const isDynamicColoring = themeInstance.systemSettings.enableDynamicColoring;
+        const isDynamicColoring = Object.prototype.hasOwnProperty.call(jsonData, "_enableDynamicColoring")
+            ? jsonData._enableDynamicColoring === true
+            : themeInstance.systemSettings.enableDynamicColoring;
 
         for (const key of keys) {
-            if (key === "themeName" || (isDynamicColoring && _colorKeys.includes(key)))
+            if (key === "themeName" || (isDynamicColoring && (_colorKeys.includes(key) || key === "_hyprActiveBorder")))
                 continue;
 
             if (themeInstance.hasOwnProperty(key)) {
@@ -104,6 +110,47 @@ Item {
             {}
         }
         console.info(`[ThemeSerializer] Finished. Total properties updated: ${appliedCount}`);
+    }
+
+    // Apply a complete Matugen palette in memory without touching the theme cache.
+    function applyM3Palette(themeInstance, palette) {
+        if (!themeInstance) {
+            console.error("[ThemeSerializer] M3 palette rejected: theme is null");
+            return false;
+        }
+        if (!palette || typeof palette !== "object" || Array.isArray(palette)) {
+            console.error("[ThemeSerializer] M3 palette rejected: expected an object");
+            return false;
+        }
+
+        // Validate the whole palette before assigning anything.
+        for (const key of _m3ColorKeys) {
+            if (!Object.prototype.hasOwnProperty.call(palette, key)) {
+                console.error("[ThemeSerializer] M3 palette missing key:", key);
+                return false;
+            }
+            const value = palette[key];
+            if (typeof value !== "string" || !/^#[0-9a-fA-F]{6}$/.test(value)) {
+                console.error("[ThemeSerializer] M3 palette has invalid color:", key, value);
+                return false;
+            }
+            if (!themeInstance.hasOwnProperty(key)) {
+                console.error("[ThemeSerializer] Theme does not own color key:", key);
+                return false;
+            }
+        }
+
+        for (const key of _m3ColorKeys) {
+            try {
+                themeInstance[key] = palette[key];
+            } catch (err) {
+                console.error("[ThemeSerializer] Failed to apply M3 color", key, err.message);
+                return false;
+            }
+        }
+
+        console.info(`[ThemeSerializer] Applied ${_m3ColorKeys.length} Matugen colors in memory`);
+        return true;
     }
 
     function removeKeysFromCache(themeName, keysToRemove, currentCacheContent) {

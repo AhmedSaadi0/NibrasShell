@@ -84,6 +84,44 @@ COLOR_TOKENS: tuple[str, ...] = (
     "tertiary_fixed_dim",
 )
 
+# Quickshell property -> Matugen token. Keep this in ThemeSerializer._colorKeys order.
+QML_COLOR_TOKENS: dict[str, str] = {
+    "_primary": "primary",
+    "_onPrimary": "on_primary",
+    "_secondary": "secondary",
+    "_onSecondary": "on_secondary",
+    "_tertiary": "tertiary",
+    "_onTertiary": "on_tertiary",
+    "_error": "error",
+    "_onError": "on_error",
+    "_surface": "surface",
+    "_onSurface": "on_surface",
+    "_surfaceDim": "surface_dim",
+    "_surfaceBright": "surface_bright",
+    "_surfaceContainerLowest": "surface_container_lowest",
+    "_surfaceContainerLow": "surface_container_low",
+    "_surfaceContainer": "surface_container",
+    "_surfaceContainerHigh": "surface_container_high",
+    "_surfaceContainerHighest": "surface_container_highest",
+    "_surfaceVariant": "surface_variant",
+    "_onSurfaceVariant": "on_surface_variant",
+    "_primaryContainer": "primary_container",
+    "_onPrimaryContainer": "on_primary_container",
+    "_secondaryContainer": "secondary_container",
+    "_onSecondaryContainer": "on_secondary_container",
+    "_tertiaryContainer": "tertiary_container",
+    "_onTertiaryContainer": "on_tertiary_container",
+    "_errorContainer": "error_container",
+    "_onErrorContainer": "on_error_container",
+    "_outline": "outline",
+    "_outlineVariant": "outline_variant",
+    "_inverseSurface": "inverse_surface",
+    "_onInverseSurface": "inverse_on_surface",
+    "_inversePrimary": "inverse_primary",
+    "_shadow": "shadow",
+    "_scrim": "scrim",
+}
+
 KONSOLE_SCHEMES: tuple[str, ...] = ("MaterialYou",)
 
 
@@ -118,11 +156,16 @@ class ColorExporter:
         self.runner = runner
         self._plasma_contents: dict[str, str] = {}
 
-    def apply(self) -> str:
+    def apply(self) -> tuple[str, dict[str, Any]]:
         payload = self._matugen_json()
+        palette = self._quickshell_palette(payload)
         self._write_plasma(payload)
         self._write_konsole(payload)
-        return self._apply_plasma()
+        digest = self._apply_plasma()
+        return digest, {
+            "mode": self.theme_mode,
+            "colors": palette,
+        }
 
     def _run(self, command: list[str], *, check: bool = True) -> Any:
         return self.runner(
@@ -199,6 +242,12 @@ class ColorExporter:
     def _rgb(cls, hex_color: str) -> str:
         raw = cls._normalize_hex(hex_color)
         return ",".join(str(int(raw[i : i + 2], 16)) for i in (0, 2, 4))
+
+    def _quickshell_palette(self, data: dict[str, Any]) -> dict[str, str]:
+        return {
+            qml_key: f"#{self._normalize_hex(self._c(data, token, self.theme_mode))}"
+            for qml_key, token in QML_COLOR_TOKENS.items()
+        }
 
     def _render_kde_scheme(self, data: dict[str, Any], mode: str) -> str:
         def c(token: str) -> str:
@@ -516,7 +565,7 @@ inactiveForeground={inactive_fg}
                 "ColorRandomization=false\n"
                 f"Description={description}\n"
                 "FillStyle=Tile\n"
-                "Opacity=0.8\n"
+                "Opacity=0.9\n"
                 "Wallpaper=\n"
                 "WallpaperFlipType=NoFlip\n"
                 "WallpaperOpacity=1"

@@ -22,14 +22,14 @@ BaseTheme {
     _onError: Qt.rgba(0.9921568632125854, 0.9647058844566345, 0.8901960849761963, 1)             // base3
 
     _surface: Qt.rgba(0, 0.16862745583057404, 0.21176470816135406, 1)                        // base03
-    _onSurface: Qt.rgba(0.5137255191802979, 0.5803921818733215, 0.5882353186607361, 1)                      // base0
-    _surfaceDim: Qt.rgba(0, 0.11764705926179886, 0.14901961386203766, 1)                     // darker than base03
-    _surfaceBright: Qt.rgba(0.027450980618596077, 0.21176470816135406, 0.25882354378700256, 1)                  // base02
-    _surfaceContainerLowest: Qt.rgba(0, 0.0784313753247261, 0.10980392247438431, 1)
-    _surfaceContainerLow: Qt.rgba(0, 0.11764705926179886, 0.14901961386203766, 1)
-    _surfaceContainer: Qt.rgba(0, 0.16862745583057404, 0.21176470816135406, 1)               // base03
-    _surfaceContainerHigh: Qt.rgba(0.027450980618596077, 0.21176470816135406, 0.25882354378700256, 1)           // base02
-    _surfaceContainerHighest: Qt.rgba(0.03921568766236305, 0.29019609093666077, 0.3529411852359772, 1)        // lighter highlight
+    _onSurface: Qt.rgba(0.5764705882, 0.631372549, 0.631372549, 1)  // Solarized base1 (#93a1a1)
+    _surfaceDim: Qt.rgba(0.000000, 0.117787, 0.147918, 1)
+    _surfaceBright: Qt.rgba(0.170525, 0.310397, 0.346179, 1)
+    _surfaceContainerLowest: Qt.rgba(0.000000, 0.079689, 0.100075, 1)
+    _surfaceContainerLow: Qt.rgba(0.030829, 0.194258, 0.236066, 1)
+    _surfaceContainer: Qt.rgba(0.062673, 0.220732, 0.261166, 1)
+    _surfaceContainerHigh: Qt.rgba(0.094738, 0.247390, 0.286441, 1)
+    _surfaceContainerHighest: Qt.rgba(0.127036, 0.274242, 0.311899, 1)
     _surfaceVariant: Qt.rgba(0.027450980618596077, 0.21176470816135406, 0.25882354378700256, 1)
     _onSurfaceVariant: Qt.rgba(0.5764706134796143, 0.6313725709915161, 0.6313725709915161, 1)               // base1
 

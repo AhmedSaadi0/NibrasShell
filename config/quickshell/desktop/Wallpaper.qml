@@ -18,6 +18,10 @@ Item {
     property real blurValue: 0.9
     property string graphicsQuality: "High"
     property real bottomMargin: 0
+    // Forwarded to every MediaItem; desktop callers keep the defaults.
+    property bool muted: false
+    property bool syncLoad: false
+    property size maxSourceSize: Qt.size(0, 0)
 
     Behavior on bottomMargin {
         NumberAnimation {
@@ -31,6 +35,7 @@ Item {
     // --- Internal State ---
     property bool bgShowChannel1: true
     property bool fgShowChannel1: true
+    property int readinessElapsed: 0
 
     // --- Helper Functions ---
     function toFileUrl(path) {
@@ -94,6 +99,9 @@ Item {
             active: opacity > 0
 
             quality: root.graphicsQuality
+            muted: root.muted
+            syncLoad: root.syncLoad
+            maxSourceSize: root.maxSourceSize
 
             state: root.bgShowChannel1 ? "active" : "inactive"
 
@@ -121,7 +129,7 @@ Item {
                     to: "active"
                     NumberAnimation {
                         property: "opacity"
-                        duration: 520
+                        duration: root.syncLoad ? 0 : 520
                         easing.type: Easing.OutCubic
                     }
                 },
@@ -147,6 +155,9 @@ Item {
             active: opacity > 0
 
             quality: root.graphicsQuality
+            muted: root.muted
+            syncLoad: root.syncLoad
+            maxSourceSize: root.maxSourceSize
 
             state: !root.bgShowChannel1 ? "active" : "inactive"
 
@@ -174,7 +185,7 @@ Item {
                     to: "active"
                     NumberAnimation {
                         property: "opacity"
-                        duration: 520
+                        duration: root.syncLoad ? 0 : 520
                         easing.type: Easing.OutCubic
                     }
                 },
@@ -234,11 +245,14 @@ Item {
             anchors.fill: parent
             active: opacity > 0
             quality: root.graphicsQuality
+            muted: root.muted
+            syncLoad: root.syncLoad
+            maxSourceSize: root.maxSourceSize
 
             opacity: root.fgShowChannel1 ? 1 : 0
             Behavior on opacity {
                 NumberAnimation {
-                    duration: 520
+                    duration: root.syncLoad ? 0 : 520
                     easing.type: Easing.OutCubic
                 }
             }
@@ -249,11 +263,14 @@ Item {
             anchors.fill: parent
             active: opacity > 0
             quality: root.graphicsQuality
+            muted: root.muted
+            syncLoad: root.syncLoad
+            maxSourceSize: root.maxSourceSize
 
             opacity: !root.fgShowChannel1 ? 1 : 0
             Behavior on opacity {
                 NumberAnimation {
-                    duration: 520
+                    duration: root.syncLoad ? 0 : 520
                     easing.type: Easing.OutCubic
                 }
             }
@@ -277,10 +294,12 @@ Item {
         }
     }
 
+    // Large cached JPEGs can take ~0.5s to decode with sourceSize set. Poll until
+    // ready instead of giving up after one tick and leaving the old wallpaper visible.
     Timer {
         id: readinessChecker
-        interval: 300
-        repeat: false
+        interval: 100
+        repeat: true
         running: false
         onTriggered: {
             const pendingBg = root.bgShowChannel1 ? bg2 : bg1;
@@ -289,12 +308,17 @@ Item {
 
             const bgOk = pendingBg.isReady || pendingBg.isError;
             const fgOk = !needOverlay || (pendingFg.isReady || pendingFg.isError);
+            root.readinessElapsed += interval;
+            const timedOut = root.readinessElapsed >= 10000;
 
-            if (bgOk && fgOk) {
+            if (timedOut)
+                console.warn("[Wallpaper] readiness timeout for " + root.wallpaperSource);
+            if (bgOk && fgOk || timedOut) {
+                readinessChecker.stop();
+                root.readinessElapsed = 0;
                 root.bgShowChannel1 = !root.bgShowChannel1;
                 root.fgShowChannel1 = !root.fgShowChannel1;
                 cleanupTimer.restart();
-                readinessChecker.stop();
             }
         }
     }
@@ -305,7 +329,8 @@ Item {
 
         targetBg.source = root.wallpaperSource;
         targetFg.source = root.overlaySource;
-        readinessChecker.start();
+        root.readinessElapsed = 0;
+        readinessChecker.restart();
     }
 
     onWallpaperSourceChanged: updateSources()

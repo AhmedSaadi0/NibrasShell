@@ -75,6 +75,18 @@ QtObject {
     property bool showDock: true
     property int dockIconSize: 32
 
+    // Lock & Idle
+    property bool lockEnabled: true
+    property bool autoLockEnabled: false
+    property int dimTimeoutSec: 300
+    property int lockTimeoutSec: 900
+    property int dpmsOffAfterLockSec: 60
+    property int autoSuspendSec: 0
+    property real dimOverlayOpacity: 0.65
+    property int dimBacklightPercent: 20
+    property bool respectIdleInhibitors: true
+    property bool lockOnSuspend: true
+
     property var _fileView: FileView {
         id: fileWatcher
         path: Qt.resolvedUrl(store.configPath)
@@ -135,6 +147,30 @@ QtObject {
             store.showDock = data.showDock;
         if (data.dockIconSize !== undefined)
             store.dockIconSize = data.dockIconSize;
+
+        // -------------------------------------------------------
+        // Lock & Idle
+        // -------------------------------------------------------
+        if (data.lockEnabled !== undefined)
+            store.lockEnabled = data.lockEnabled;
+        if (data.autoLockEnabled !== undefined)
+            store.autoLockEnabled = data.autoLockEnabled;
+        if (data.dimTimeoutSec !== undefined)
+            store.dimTimeoutSec = data.dimTimeoutSec;
+        if (data.lockTimeoutSec !== undefined)
+            store.lockTimeoutSec = data.lockTimeoutSec;
+        if (data.dpmsOffAfterLockSec !== undefined)
+            store.dpmsOffAfterLockSec = data.dpmsOffAfterLockSec;
+        if (data.autoSuspendSec !== undefined)
+            store.autoSuspendSec = data.autoSuspendSec;
+        if (data.dimOverlayOpacity !== undefined)
+            store.dimOverlayOpacity = data.dimOverlayOpacity;
+        if (data.dimBacklightPercent !== undefined)
+            store.dimBacklightPercent = data.dimBacklightPercent;
+        if (data.respectIdleInhibitors !== undefined)
+            store.respectIdleInhibitors = data.respectIdleInhibitors;
+        if (data.lockOnSuspend !== undefined)
+            store.lockOnSuspend = data.lockOnSuspend;
 
         // -------------------------------------------------------
         // الموقع والطقس

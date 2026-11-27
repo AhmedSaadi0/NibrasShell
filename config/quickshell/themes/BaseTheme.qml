@@ -37,15 +37,15 @@ PersistentProperties {
     // --- M3 Surface ---
     property color _surface: Kirigami.Theme.backgroundColor
     property color _onSurface: Kirigami.Theme.textColor
-    property color _surfaceDim: Qt.darker(root._surface, 1.1)
-    property color _surfaceBright: Qt.lighter(root._surface, 1.1)
+    property color _surfaceDim: root._themeMode === "light" ? Qt.darker(root._surface, 1.16) : Qt.darker(root._surface, 1.2)
+    property color _surfaceBright: root._themeMode === "light" ? "#FFFFFF" : Qt.lighter(root._surface, 2.2)
 
     // --- M3 Surface Containers ---
-    property color _surfaceContainerLowest: Qt.darker(root._surface, 1.15)
-    property color _surfaceContainerLow: Qt.darker(root._surface, 1.05)
-    property color _surfaceContainer: Kirigami.Theme.alternateBackgroundColor
-    property color _surfaceContainerHigh: Qt.lighter(Kirigami.Theme.alternateBackgroundColor, 1.1)
-    property color _surfaceContainerHighest: Qt.lighter(Kirigami.Theme.alternateBackgroundColor, 1.2)
+    property color _surfaceContainerLowest: root._themeMode === "light" ? "#FFFFFF" : Qt.darker(root._surface, 1.5)
+    property color _surfaceContainerLow: root._themeMode === "light" ? Qt.darker(root._surface, 1.03) : Qt.lighter(root._surface, 1.15)
+    property color _surfaceContainer: root._themeMode === "light" ? Qt.darker(root._surface, 1.06) : Qt.lighter(root._surface, 1.35)
+    property color _surfaceContainerHigh: root._themeMode === "light" ? Qt.darker(root._surface, 1.10) : Qt.lighter(root._surface, 1.6)
+    property color _surfaceContainerHighest: root._themeMode === "light" ? Qt.darker(root._surface, 1.14) : Qt.lighter(root._surface, 1.9)
 
     // --- M3 Surface Variant ---
     property color _surfaceVariant: Kirigami.Theme.alternateBackgroundColor

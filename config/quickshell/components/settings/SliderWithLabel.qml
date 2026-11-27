@@ -16,6 +16,8 @@ ColumnLayout {
     property double value: 0
     property double stepSize: 1.0
     property int decimals: 0
+    // Optional formatter for the displayed value; raw numbers remain unchanged.
+    property var valueFormatter: null
 
     // --- Outputs ---
     signal currentValueChanged(double newValue)
@@ -38,7 +40,7 @@ ColumnLayout {
 
         Controls.Label {
             id: valueLabel
-            text: slider.value.toFixed(root.decimals)
+            text: root.valueFormatter ? root.valueFormatter(slider.value) : slider.value.toFixed(root.decimals)
             font.bold: true
             color: ThemeManager.selectedTheme.colors.primary
             Layout.minimumWidth: 40

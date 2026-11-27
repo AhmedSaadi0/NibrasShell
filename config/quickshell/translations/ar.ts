@@ -722,6 +722,78 @@
         <source>Log out </source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="53"/>
+        <source>System Control</source>
+        <translation>التحكم بالنظام</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="62"/>
+        <source>This action cannot be undone</source>
+        <translation>لا يمكن التراجع عن هذا الإجراء</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="62"/>
+        <source>Choose an action to perform</source>
+        <translation>اختر الإجراء المطلوب تنفيذه</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="223"/>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="230"/>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="492"/>
+        <source>Shut Down</source>
+        <translation>إيقاف التشغيل</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="229"/>
+        <source>Shut Down System?</source>
+        <translation>إيقاف تشغيل النظام؟</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="238"/>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="245"/>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="498"/>
+        <source>Restart</source>
+        <translation>إعادة التشغيل</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="244"/>
+        <source>Restart System?</source>
+        <translation>إعادة تشغيل النظام؟</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="253"/>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="260"/>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="504"/>
+        <source>Suspend</source>
+        <translation>النوم</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="259"/>
+        <source>Suspend System?</source>
+        <translation>وضع النظام في النوم؟</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="268"/>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="275"/>
+        <source>Log Out</source>
+        <translation>تسجيل الخروج</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="274"/>
+        <source>Exit Session?</source>
+        <translation>الخروج من الجلسة؟</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="283"/>
+        <source>Lock</source>
+        <translation>قفل</translation>
+    </message>
+    <message>
+        <location filename="../windows/poweroption/PowerOptions.qml" line="380"/>
+        <source>Back</source>
+        <translation>رجوع</translation>
+    </message>
 </context>
 <context>
     <name>PowerProfiles</name>
@@ -1208,6 +1280,238 @@
     <message>
         <source>Unpin from Dock</source>
         <translation>إلغاء تثبيت من الدوك</translation>
+    </message>
+</context>
+<context>
+    <name>LockIdlePage</name>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="15"/>
+        <source>Lock &amp; Idle</source>
+        <translation>القفل والخمول</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="41"/>
+        <source>Disabled</source>
+        <translation>معطّل</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="43"/>
+        <source>%1 s</source>
+        <translation>%1 ث</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="47"/>
+        <source>%1 m</source>
+        <translation>%1 د</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="47"/>
+        <source>%1 m %2 s</source>
+        <translation>%1 د %2 ث</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="51"/>
+        <source>%1 h</source>
+        <translation>%1 س</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="51"/>
+        <source>%1 h %2 m</source>
+        <translation>%1 س %2 د</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="119"/>
+        <source>Lock Behavior</source>
+        <translation>سلوك القفل</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="120"/>
+        <source>Manual lock is always available. Auto-lock stays off until the lock flow is verified live.</source>
+        <translation>القفل اليدوي متاح دائمًا. يبقى القفل التلقائي متوقفًا حتى يتم التحقق من القفل عمليًا.</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="126"/>
+        <source>Enable lock screen</source>
+        <translation>تفعيل شاشة القفل</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="133"/>
+        <source>Auto-lock when idle</source>
+        <translation>قفل تلقائي عند الخمول</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="140"/>
+        <source>Lock on suspend</source>
+        <translation>القفل عند النوم</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="147"/>
+        <source>Respect idle inhibitors</source>
+        <translation>احترام مثبطات الخمول</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="148"/>
+        <source>Fullscreen video and media players can prevent idle actions.</source>
+        <translation>يمكن لفيديو ملء الشاشة ومشغلات الوسائط منع إجراءات الخمول.</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="155"/>
+        <source>Idle Timings</source>
+        <translation>أوقات الخمول</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="156"/>
+        <source>Values are seconds. 0 disables dim, DPMS-off, or auto-suspend; lock time is kept above dim time.</source>
+        <translation>القيم بالثوانٍ. القيمة 0 تعطّل التعتيم أو إطفاء الشاشة أو النوم التلقائي؛ ويُبقى وقت القفل أعلى من وقت التعتيم.</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="162"/>
+        <source>Dim after (seconds)</source>
+        <translation>التعتيم بعد (ثانية)</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="173"/>
+        <source>Lock after (seconds)</source>
+        <translation>القفل بعد (ثانية)</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="184"/>
+        <source>DPMS off after lock (seconds)</source>
+        <translation>إطفاء الشاشة بعد القفل (ثانية)</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="195"/>
+        <source>Auto-suspend after idle (seconds)</source>
+        <translation>النوم التلقائي بعد الخمول (ثانية)</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="206"/>
+        <source>Dim Appearance</source>
+        <translation>مظهر التعتيم</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="207"/>
+        <source>The overlay covers every screen; backlight dimming applies only to a detected panel.</source>
+        <translation>تغطي الطبقة كل الشاشات؛ بينما ينطبق تعتيم الإضاءة الخلفية على اللوحة المكتشفة فقط.</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="213"/>
+        <source>Overlay opacity</source>
+        <translation>عتامة الطبقة</translation>
+    </message>
+    <message>
+        <location filename="../windows/settings/components/general/LockIdlePage.qml" line="225"/>
+        <source>Backlight percent while dimmed</source>
+        <translation>نسبة الإضاءة الخلفية أثناء التعتيم</translation>
+    </message>
+</context>
+<context>
+    <name>LockService</name>
+    <message>
+        <location filename="../services/LockService.qml" line="55"/>
+        <location filename="../services/LockService.qml" line="690"/>
+        <source>Ready</source>
+        <translation>جاهز</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="305"/>
+        <source>Password required</source>
+        <translation>كلمة المرور مطلوبة</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="305"/>
+        <source>Authenticating…</source>
+        <translation>جارٍ التحقق…</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="329"/>
+        <source>Authentication successful</source>
+        <translation>تم التحقق بنجاح</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="336"/>
+        <source>Authentication failed</source>
+        <translation>فشل التحقق</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="341"/>
+        <source>Too many authentication attempts</source>
+        <translation>محاولات تحقق كثيرة جدًا</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="347"/>
+        <source>Authentication error</source>
+        <translation>خطأ في التحقق</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="358"/>
+        <source>PAM error: %1</source>
+        <translation>خطأ PAM: %1</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="577"/>
+        <source>Authentication already in progress</source>
+        <translation>التحقق جارٍ بالفعل</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="583"/>
+        <source>Testing PAM…</source>
+        <translation>جارٍ اختبار PAM…</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="583"/>
+        <location filename="../services/LockService.qml" line="615"/>
+        <location filename="../services/LockService.qml" line="669"/>
+        <source>Enter password</source>
+        <translation>أدخل كلمة المرور</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="589"/>
+        <source>PAM could not start</source>
+        <translation>تعذر بدء PAM</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="617"/>
+        <source>Authentication cancelled</source>
+        <translation>تم إلغاء التحقق</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="706"/>
+        <source>PAM test disabled</source>
+        <translation>اختبار PAM معطّل</translation>
+    </message>
+    <message>
+        <location filename="../services/LockService.qml" line="718"/>
+        <source>PAM test aborted</source>
+        <translation>تم إلغاء اختبار PAM</translation>
+    </message>
+</context>
+<context>
+    <name>LockSurface</name>
+    <message>
+        <location filename="../windows/lock/LockSurface.qml" line="136"/>
+        <source>Locked — click or type to move the login card here</source>
+        <translation>مقفل — انقر أو اكتب لنقل بطاقة تسجيل الدخول إلى هنا</translation>
+    </message>
+    <message>
+        <location filename="../windows/lock/LockSurface.qml" line="180"/>
+        <source>User</source>
+        <translation>مستخدم</translation>
+    </message>
+    <message>
+        <location filename="../windows/lock/LockSurface.qml" line="202"/>
+        <source>Password</source>
+        <translation>كلمة المرور</translation>
+    </message>
+    <message>
+        <location filename="../windows/lock/LockSurface.qml" line="245"/>
+        <source>Unlock</source>
+        <translation>فتح القفل</translation>
+    </message>
+    <message>
+        <location filename="../windows/lock/LockSurface.qml" line="254"/>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
     </message>
 </context>
 </TS>

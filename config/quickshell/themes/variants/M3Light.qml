@@ -45,14 +45,14 @@ BaseTheme {
     // تدرج الأسطح الديناميكي للوضع المضيء لضمان طبقات ناصعة ومريحة
     _surface: Kirigami.Theme.backgroundColor
     _onSurface: Kirigami.Theme.textColor
-    _surfaceDim: Qt.darker(_surface, 1.08)
+    _surfaceDim: Qt.darker(_surface, 1.16)
     _surfaceBright: "#FFFFFF"
 
     _surfaceContainerLowest: "#FFFFFF"
-    _surfaceContainerLow: Qt.darker(_surface, 1.02)
-    _surfaceContainer: Kirigami.Theme.alternateBackgroundColor
-    _surfaceContainerHigh: Qt.darker(_surfaceContainer, 1.04)
-    _surfaceContainerHighest: Qt.darker(_surfaceContainer, 1.08)
+    _surfaceContainerLow: Qt.darker(_surface, 1.03)
+    _surfaceContainer: Qt.darker(_surface, 1.06)
+    _surfaceContainerHigh: Qt.darker(_surface, 1.10)
+    _surfaceContainerHighest: Qt.darker(_surface, 1.14)
 
     _surfaceVariant: Kirigami.Theme.alternateBackgroundColor
     _onSurfaceVariant: Qt.rgba(_onSurface.r, _onSurface.g, _onSurface.b, 0.7)

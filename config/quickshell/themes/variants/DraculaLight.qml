@@ -26,16 +26,16 @@ BaseTheme {
     _onError: Qt.rgba(1, 1, 1, 1)
 
     // --- أسطح وخلفيات دراكولا الفاتحة الرسمية ---
-    _surface: Qt.rgba(0.973, 0.973, 0.949, 1)                     // Dracula Inverted Background (#f8f8f2)
-    _onSurface: Qt.rgba(0.157, 0.165, 0.212, 1)                   // Dracula Dark Background as Text (#282a36)
-    _surfaceDim: Qt.rgba(0.918, 0.914, 0.882, 1)                  // #eae9e1
-    _surfaceBright: Qt.rgba(1, 1, 1, 1)
+    _surface: Qt.rgba(1, 0.9843137255, 0.9215686275, 1)           // Alucard background (#fffbeb)
+    _onSurface: Qt.rgba(0.1215686275, 0.1215686275, 0.1215686275, 1) // Alucard foreground (#1f1f1f)
+    _surfaceDim: Qt.rgba(0.849964, 0.849964, 0.828999, 1)
+    _surfaceBright: Qt.rgba(1.000000, 1.000000, 1.000000, 1)
 
-    _surfaceContainerLowest: Qt.rgba(1, 1, 1, 1)
-    _surfaceContainerLow: Qt.rgba(0.953, 0.953, 0.922, 1)         // #f3f3eb
-    _surfaceContainer: Qt.rgba(0.933, 0.929, 0.898, 1)            // #eeede5
-    _surfaceContainerHigh: Qt.rgba(0.910, 0.906, 0.871, 1)        // #e8e7de
-    _surfaceContainerHighest: Qt.rgba(0.886, 0.882, 0.843, 1)     // #e2e1d7
+    _surfaceContainerLowest: Qt.rgba(1.000000, 1.000000, 1.000000, 1)
+    _surfaceContainerLow: Qt.rgba(0.950398, 0.950398, 0.926956, 1)
+    _surfaceContainer: Qt.rgba(0.927898, 0.927898, 0.905011, 1)
+    _surfaceContainerHigh: Qt.rgba(0.894340, 0.894340, 0.872280, 1)
+    _surfaceContainerHighest: Qt.rgba(0.861018, 0.861018, 0.839780, 1)
 
     _surfaceVariant: Qt.rgba(0.886, 0.882, 0.843, 1)             // Dracula Selection/Variant
     _onSurfaceVariant: Qt.rgba(0.384, 0.447, 0.643, 1)           // Dracula Comment Color (#6272a4)

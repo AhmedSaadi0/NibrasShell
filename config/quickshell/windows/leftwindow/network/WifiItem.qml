@@ -313,7 +313,7 @@ Item {
                     MButton {
                         Layout.fillWidth: true
                         text: root.in_use ? qsTr("Disconnect") : qsTr("Connect")
-                        normalBackground: ThemeManager.selectedTheme.colors.primary.darker(1.2)
+                        normalBackground: ThemeManager.selectedTheme.colors.primary
                         normalForeground: ThemeManager.selectedTheme.colors.onPrimary
                         topLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / root.innerRadiusDiv
                         bottomLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / root.innerRadiusDiv

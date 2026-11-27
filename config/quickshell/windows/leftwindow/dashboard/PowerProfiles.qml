@@ -16,8 +16,8 @@ MenuCard {
     // --- Texts & Content ---
     title: qsTr("Power Profiles") // "وضع الاداء"
     icon: ""
-    cardColor: ThemeManager.selectedTheme.colors.tertiaryContainer.alpha(0.7)
-    textColor: ThemeManager.selectedTheme.colors.onTertiaryContainer
+    cardColor: ThemeManager.selectedTheme.colors.surfaceContainer
+    textColor: ThemeManager.selectedTheme.colors.onSurface
 
     property int defaultButtonWidth: 100
     property int defaultButtonHeight: 30
@@ -269,10 +269,9 @@ MenuCard {
                     enabled: PowerProfiles.hasPerformanceProfile
                     isActive: root.selectedProfile === root.profileIndexPerformance
 
-                    normalBackground: root.textColor.alpha(0.1)
-                    normalForeground: root.textColor
-                    hoveredBackground: root.cardColor.alpha(0.2)
-                    downForeground: root.textColor
+                    normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+                    normalForeground: ThemeManager.selectedTheme.colors.onSurface
+                    hoverOpacity: 0.16
 
                     topRightRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
                     bottomRightRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
@@ -292,10 +291,9 @@ MenuCard {
                     }
                     isActive: root.selectedProfile === root.profileIndexBalanced
 
-                    normalBackground: root.textColor.alpha(0.1)
-                    normalForeground: root.textColor
-                    hoveredBackground: root.cardColor.alpha(0.2)
-                    downForeground: root.textColor
+                    normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+                    normalForeground: ThemeManager.selectedTheme.colors.onSurface
+                    hoverOpacity: 0.16
 
                     topLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
                     topRightRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
@@ -317,10 +315,9 @@ MenuCard {
                     }
                     isActive: root.selectedProfile === root.profileIndexPowerSaver
 
-                    normalBackground: root.textColor.alpha(0.1)
-                    normalForeground: root.textColor
-                    hoveredBackground: root.cardColor.alpha(0.2)
-                    downForeground: root.textColor
+                    normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+                    normalForeground: ThemeManager.selectedTheme.colors.onSurface
+                    hoverOpacity: 0.16
 
                     bottomLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
                     topLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
@@ -337,14 +334,14 @@ MenuCard {
                 text: ""
                 font.family: ThemeManager.selectedTheme.typography.iconFont
                 font.pixelSize: 12
-                color: ThemeManager.selectedTheme.colors.onSecondaryContainer
+                color: ThemeManager.selectedTheme.colors.onSurfaceVariant
             }
             Text {
                 Layout.fillWidth: true
                 text: qsTr("High performance profile is not available on this device.")
                 font.family: ThemeManager.selectedTheme.typography.bodyFont
                 font.pixelSize: 11
-                color: ThemeManager.selectedTheme.colors.onSecondaryContainer
+                color: ThemeManager.selectedTheme.colors.onSurfaceVariant
                 wrapMode: Text.Wrap
             }
         }

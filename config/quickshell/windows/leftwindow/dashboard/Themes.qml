@@ -18,13 +18,11 @@ MenuCard {
 
     title: qsTr("Themes & Customization")
     icon: ""
-    cardColor: ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.7)
-    textColor: ThemeManager.selectedTheme.colors.onPrimaryContainer
+    cardColor: ThemeManager.selectedTheme.colors.surfaceContainer
+    textColor: ThemeManager.selectedTheme.colors.onSurface
 
     property bool settingsExpanded: false
     property int innerRadiusDiv: 4
-
-
 
     ColumnLayout {
         id: mainLayout
@@ -147,7 +145,7 @@ MenuCard {
             text: qsTr("Single Themes")
             font.pointSize: 10
             font.bold: true
-            color: ThemeManager.selectedTheme.colors.onPrimaryContainer
+            color: ThemeManager.selectedTheme.colors.onSurface
             opacity: 0.8
             Layout.topMargin: 5
             // Layout.horizontalCenter: parent.horizontalCenter
@@ -171,10 +169,8 @@ MenuCard {
                 Layout.preferredHeight: 25
                 iconText: ""
                 isActive: ThemeManager.selectedTheme.themeName === "ColorsTheme"
-                normalBackground: {
-                    let base = ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.6);
-                    return ThemeManager.selectedTheme._themeMode === "dark" ? Qt.lighter(base, 1.15) : Qt.darker(base, 1.12);
-                }
+                normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+                hoverOpacity: 0.16
 
                 topRightRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
                 bottomRightRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
@@ -190,10 +186,8 @@ MenuCard {
                 Layout.preferredHeight: 25
                 iconText: ""
                 isActive: ThemeManager.selectedTheme.themeName === "DeerTheme"
-                normalBackground: {
-                    let base = ThemeManager.selectedTheme.colors.primaryContainer.alpha(0.6);
-                    return ThemeManager.selectedTheme._themeMode === "dark" ? Qt.lighter(base, 1.15) : Qt.darker(base, 1.12);
-                }
+                normalBackground: ThemeManager.selectedTheme.colors.surfaceContainerHighest
+                hoverOpacity: 0.16
 
                 bottomLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
                 topLeftRadius: ThemeManager.selectedTheme.dimensions.elementRadius / (isActive ? Consts.M3_BUTTON_RADIUS_DIVISOR : innerRadiusDiv)
@@ -206,7 +200,7 @@ MenuCard {
             Layout.topMargin: 5
             Layout.bottomMargin: 5
             height: 1
-            color: ThemeManager.selectedTheme.colors.onPrimaryContainer.alpha(0.2)
+            color: ThemeManager.selectedTheme.colors.onSurface.alpha(0.2)
         }
 
         Rectangle {
@@ -234,7 +228,7 @@ MenuCard {
                 Label {
                     text: "Advanced Customization"
                     font.bold: true
-                    color: ThemeManager.selectedTheme.colors.onPrimaryContainer
+                    color: ThemeManager.selectedTheme.colors.onSurface
                 }
                 Item {
                     Layout.fillWidth: true
@@ -244,7 +238,7 @@ MenuCard {
                     text: ""
                     font.family: "FantasqueSansM Nerd Font Propo"
                     font.pixelSize: 16
-                    color: ThemeManager.selectedTheme.colors.onPrimaryContainer
+                    color: ThemeManager.selectedTheme.colors.onSurface
                     rotation: root.settingsExpanded ? 180 : 0
                     Behavior on rotation {
                         NumberAnimation {
