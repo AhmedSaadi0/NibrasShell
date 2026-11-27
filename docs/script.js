@@ -132,6 +132,7 @@ const translations = {
     rd_ui_li1: "تحسين هيكلية ThemeManager",
     rd_ui_li2: "دعم خلفيات GIF و Video",
     rd_ui_li3: "ضبط متغيرات Material 3 الديناميكية",
+    rd_ui_li11: "الانتقال إلى matugen للتلوين الديناميكي.",
     rd_ui_li4: "وضع الألعاب (Game Mode) للأداء العالي",
     rd_ui_li5: "تأثير العمق التلقائي وربطه بـ Cava",
     rd_ui_li6: "ثيمات جديدة: Solarized, Rosé Pine, Oxocarbon",
@@ -142,6 +143,10 @@ const translations = {
 
     rd_sys_li1: "مؤشر اللغة، البطارية، وأوضع الطاقة",
     rd_sys_li2: "مدير الحافظة وقائمة المهام",
+    rd_sys_li11:
+      "قائمة مهام محسّنة (Todo Menu): Markdown آمن، روابط تفاعلية، معاينة حية، وتحرير متعدد الأسطر.",
+    rd_sys_li12:
+      "نظام قفل وخمول موحّد: التعتيم، القفل، إطفاء الشاشة، والسكون الاختياري.",
     rd_sys_li3: "ودجت الملاحظات السريعة",
     rd_sys_li4: "قائمة التطبيقات المفضلة",
     rd_sys_li5: "مواقيت الصلاة والتاريخ الهجري",
@@ -738,6 +743,7 @@ Choose your language / اختر لغتك / Vyberte jazyk:
     rd_ui_li1: "Improve Themes: Restructure ThemeManager",
     rd_ui_li2: "GIF & Video Wallpapers support",
     rd_ui_li3: "Dynamic Coloring: Configure Material 3 variants",
+    rd_ui_li11: "Switch to matugen for dynamic coloring.",
     rd_ui_li4: "Game Mode: Toggle for high performance",
     rd_ui_li5: "Depth Effect: Auto-generation linked with Cava",
     rd_ui_li6: "New Themes: Solarized, Rosé Pine, Oxocarbon",
@@ -748,6 +754,10 @@ Choose your language / اختر لغتك / Vyberte jazyk:
 
     rd_sys_li1: "Indicators: Language, Battery, Power Profiles",
     rd_sys_li2: "Clipboard Manager & Todo List",
+    rd_sys_li11:
+      "Improved Todo Menu: safe Markdown, interactive links, live preview, and multi-line editing.",
+    rd_sys_li12:
+      "Unified lock and idle system: dimming, locking, screen off, and optional sleep.",
     rd_sys_li3: "Widgets: Quick Notes",
     rd_sys_li4: "Favorite Apps List",
     rd_sys_li5: "Prayer Times & Hijri Date",
