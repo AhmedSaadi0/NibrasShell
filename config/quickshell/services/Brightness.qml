@@ -13,11 +13,21 @@ import "../config"
 Singleton {
     id: root
 
+    reloadableId: "brightness"
+
     property var ddcMonitors: []
+    property bool ddcProbed: false
+    property bool ddcRescanPending: false
+
     readonly property list<Monitor> monitors: variants.instances
 
-    // السطوع العام للمراقبة من الخارج
-    property real brightness: 0
+    readonly property Monitor focusedMonitor: {
+        const name = root.focusedName();
+        return monitors.find(m => m.modelData.name === name) ?? null;
+    }
+
+    // السطوع العام للمراقبة من الخارج (يتحدث تلقائياً مع تغير التركيز أو قيمة الشاشة)
+    readonly property real brightness: focusedMonitor ? focusedMonitor.brightness : 0
     property bool hasBacklight: false
 
     // Dim snapshot (class backlight only). -1 means no usable snapshot.
@@ -27,7 +37,7 @@ Singleton {
     property int snapshotMax: -1
     property bool dimPending: false
 
-    function clampPercent(value) {
+    function clampPercent(value): int {
         let n = Number(value);
         if (!isFinite(n))
             n = 20;
@@ -39,74 +49,76 @@ Singleton {
     }
 
     function getMonitorForScreen(): var {
-        const name = root.focusedName();
-        return monitors.find(m => m.modelData.name === name);
+        return root.focusedMonitor;
     }
 
-    function setDdcWorking(bus: string, working: bool): void {
-        let changed = false;
-        const updated = root.ddcMonitors.map(m => {
-            if (m.busNum === bus && m.ddcWorking !== working) {
-                changed = true;
-                return Object.assign({}, m, { ddcWorking: working });
-            }
-            return m;
-        });
-        if (changed)
-            root.ddcMonitors = updated;
+    function triggerDetection(): void {
+        backlightProbe.running = true;
+        if (ddcProc.running) {
+            root.ddcRescanPending = true;
+            return;
+        }
+        ddcProc.detectedBuffer = [];
+        ddcProc.running = true;
     }
 
     function applyDim(percent): void {
-        root.dimPercent = root.clampPercent(percent);
-        console.info("[Brightness] applyDim: percent=" + root.dimPercent + " hasBacklight=" + root.hasBacklight + " dimActive=" + root.dimActive);
-        if (root.dimActive || !root.hasBacklight)
+        const clamped = root.clampPercent(percent);
+        root.dimPercent = clamped;
+        console.info("[Brightness] applyDim: percent=" + clamped + " hasBacklight=" + root.hasBacklight + " dimActive=" + root.dimActive);
+
+        if (!root.hasBacklight)
             return;
+
+        // إذا كان الخفت مفعلاً مسبقاً، نطبّق المستوى الجديد مباشرة دون تدمير الـ snapshot الأصلي
+        if (root.dimActive) {
+            Quickshell.execDetached(["brightnessctl", "-c", "backlight", "s", `${clamped}%`]);
+            return;
+        }
+
+        snapshotRefreshTimer.stop();
         root.dimPending = true;
-        snapshotProc.running = true;
+        if (!snapshotProc.running)
+            snapshotProc.running = true;
     }
 
     function restoreDim(): void {
         root.dimPending = false;
+        snapshotRefreshTimer.stop();
+
         if (!root.dimActive)
             return;
+
         console.info("[Brightness] restoreDim: snapshot=" + root.snapshotCurrent + "/" + root.snapshotMax);
         root.dimActive = false;
+
         if (root.snapshotCurrent >= 0 && root.snapshotMax > 0) {
-            const percent = Math.min(100, Math.max(0, Math.round(root.snapshotCurrent * 100 / root.snapshotMax)));
-            Quickshell.execDetached(["brightnessctl", "-c", "backlight", "s", `${percent}%`]);
+            // تمرير القيمة الخام مباشرة يحفظ الدقة ويمنع التقريب إلى 0%
+            Quickshell.execDetached(["brightnessctl", "-c", "backlight", "s", String(root.snapshotCurrent)]);
         }
         root.snapshotCurrent = -1;
         root.snapshotMax = -1;
     }
 
-    // User brightness keys while dimmed: re-snapshot after the command settles
-    // so restoreDim() returns to the user's new value, not the old baseline.
     function refreshDimSnapshot(): void {
         if (root.dimActive)
             snapshotRefreshTimer.restart();
     }
 
     function increaseBrightness(): void {
-        const monitor = root.getMonitorForScreen();
+        const monitor = root.focusedMonitor;
         if (monitor)
             monitor.setBrightness(monitor.brightness + 0.1);
     }
 
     function decreaseBrightness(): void {
-        const monitor = root.getMonitorForScreen();
+        const monitor = root.focusedMonitor;
         if (monitor)
             monitor.setBrightness(monitor.brightness - 0.1);
     }
 
-    reloadableId: "brightness"
-
-    Component.onCompleted: backlightProbe.running = true
-
-    onMonitorsChanged: {
-        ddcMonitors = [];
-        ddcProc.running = true;
-        backlightProbe.running = true;
-    }
+    Component.onCompleted: root.triggerDetection()
+    onMonitorsChanged: root.triggerDetection()
 
     Variants {
         id: variants
@@ -116,34 +128,64 @@ Singleton {
 
     Process {
         id: backlightProbe
-        command: ["sh", "-c", "brightnessctl -c backlight m 2>/dev/null || echo 0"]
+        command: ["brightnessctl", "-c", "backlight", "-m"]
+        property bool seenLine: false
+        onRunningChanged: {
+            if (running)
+                seenLine = false;
+        }
         stdout: SplitParser {
             onRead: data => {
-                const max = parseInt(data.trim(), 10);
-                root.hasBacklight = isFinite(max) && max > 0;
-                console.info("[Brightness] backlight probe: hasBacklight=" + root.hasBacklight + " max=" + (isFinite(max) ? max : "n/a"));
+                if (backlightProbe.seenLine)
+                    return;
+                const parts = data.trim().split(",");
+                if (parts.length >= 5) {
+                    const max = parseInt(parts[4], 10);
+                    if (isFinite(max) && max > 0) {
+                        backlightProbe.seenLine = true;
+                        root.hasBacklight = true;
+                        console.info("[Brightness] backlight probe: max=" + max);
+                    }
+                }
+            }
+        }
+        onExited: exitCode => {
+            if (!backlightProbe.seenLine || exitCode !== 0) {
+                root.hasBacklight = false;
+                console.info("[Brightness] backlight probe: hasBacklight=false");
             }
         }
     }
 
     Process {
         id: snapshotProc
-        command: ["sh", "-c", "echo \"$(brightnessctl -c backlight g 2>/dev/null) $(brightnessctl -c backlight m 2>/dev/null)\""]
+        command: ["brightnessctl", "-c", "backlight", "-m"]
+        property bool parsed: false
+        onRunningChanged: {
+            if (running)
+                parsed = false;
+        }
         stdout: SplitParser {
             onRead: data => {
-                const parts = data.trim().split(/\s+/);
-                const current = parseInt(parts[0], 10);
-                const max = parseInt(parts[1], 10);
-                if (isFinite(current) && isFinite(max) && max > 0 && current >= 0) {
-                    root.snapshotCurrent = current;
-                    root.snapshotMax = max;
-                } else {
-                    root.snapshotCurrent = -1;
-                    root.snapshotMax = -1;
+                if (snapshotProc.parsed)
+                    return;
+                const parts = data.trim().split(",");
+                if (parts.length >= 5) {
+                    const current = parseInt(parts[2], 10);
+                    const max = parseInt(parts[4], 10);
+                    if (isFinite(current) && isFinite(max) && max > 0 && current >= 0) {
+                        root.snapshotCurrent = current;
+                        root.snapshotMax = max;
+                        snapshotProc.parsed = true;
+                    }
                 }
             }
         }
-        onExited: {
+        onExited: exitCode => {
+            if (!snapshotProc.parsed || exitCode !== 0) {
+                root.snapshotCurrent = -1;
+                root.snapshotMax = -1;
+            }
             if (!root.dimPending)
                 return;
             root.dimPending = false;
@@ -159,34 +201,54 @@ Singleton {
         id: snapshotRefreshTimer
         interval: 200
         repeat: false
-        onTriggered: snapshotProc.running = true
+        onTriggered: {
+            if (root.dimActive && !snapshotProc.running)
+                snapshotProc.running = true;
+        }
     }
 
     Process {
         id: ddcProc
+        property var detectedBuffer: []
         command: ["ddcutil", "detect", "--brief"]
+
         stdout: SplitParser {
             splitMarker: "\n\n"
             onRead: data => {
-                if (!data.startsWith("Display "))
+                const block = data.trim();
+                if (!block.startsWith("Display "))
                     return;
-                const lines = data.split("\n").map(l => l.trim());
+                const lines = block.split("\n").map(l => l.trim());
                 const monitorLine = lines.find(l => l.startsWith("Monitor:"));
                 const busLine = lines.find(l => l.startsWith("I2C bus:"));
                 if (!monitorLine || !busLine)
                     return;
-                const model = monitorLine.split(":")[2]?.trim();
-                const bus = busLine.split("/dev/i2c-")[1]?.trim().split(/\s+/)[0];
-                if (!model || !bus)
+
+                // صيغة ddcutil --brief هي: Monitor: MFG:MODEL:SERIAL
+                const monitorParts = monitorLine.split(":");
+                const model = monitorParts[2]?.trim() ?? "";
+                const serial = monitorParts[3]?.trim() ?? "";
+                const bus = busLine.split("/dev/i2c-")[1]?.trim().split(/\s+/)[0] ?? "";
+                if (!bus || (!model && !serial))
                     return;
-                root.ddcMonitors.push({
+
+                ddcProc.detectedBuffer.push({
                     model: model,
-                    busNum: bus,
-                    ddcWorking: null
+                    serial: serial,
+                    busNum: bus
                 });
             }
         }
-        onExited: root.ddcMonitorsChanged()
+
+        onExited: {
+            root.ddcMonitors = ddcProc.detectedBuffer.slice();
+            root.ddcProbed = true;
+            if (root.ddcRescanPending) {
+                root.ddcRescanPending = false;
+                ddcProc.detectedBuffer = [];
+                ddcProc.running = true;
+            }
+        }
     }
 
     NibrasShellShortcut {
@@ -203,71 +265,132 @@ Singleton {
         id: monitor
 
         required property ShellScreen modelData
-        readonly property var ddcInfo: root.ddcMonitors.find(m => m.model === modelData.model) ?? null
-        readonly property bool isDdc: ddcInfo !== null
-        readonly property bool ddcSupported: isDdc && ddcInfo.ddcWorking === true
-        readonly property bool ddcUnsupported: isDdc && ddcInfo.ddcWorking === false
-        readonly property string busNum: ddcInfo?.busNum ?? ""
+
+        // حالة DDC محلية داخل كل شاشة لتفادي إثارة ddcMonitorsChanged لكل الشاشات
+        // 0 = غير مفحوص، 1 = مدعوم، -1 = غير مدعوم
+        property int ddcState: 0
         property real brightness: 0
+        property int pendingPercent: -1
+
+        readonly property var ddcInfo: {
+            const serial = monitor.modelData.serialNumber?.trim() ?? "";
+            if (serial.length > 0) {
+                const bySerial = root.ddcMonitors.find(m => m.serial === serial);
+                if (bySerial)
+                    return bySerial;
+            }
+            const model = monitor.modelData.model?.trim() ?? "";
+            if (model.length > 0)
+                return root.ddcMonitors.find(m => m.model === model) ?? null;
+            return null;
+        }
+
+        readonly property bool isDdc: ddcInfo !== null
+        readonly property bool ddcSupported: isDdc && ddcState === 1
+        readonly property bool ddcUnsupported: isDdc && ddcState === -1
+        readonly property string busNum: ddcInfo?.busNum ?? ""
+
+        onDdcInfoChanged: {
+            monitor.ddcState = 0;
+            monitor.refreshInit();
+        }
 
         function refreshInit(): void {
-            if (monitor.ddcUnsupported) {
-                initProc.command = [];
+            if (!root.ddcProbed || monitor.ddcUnsupported)
                 return;
-            }
+
             if (monitor.isDdc) {
                 initProc.command = ["ddcutil", "-b", monitor.busNum, "getvcp", "10", "--brief"];
-            } else {
-                initProc.command = ["sh", "-c", "echo \"a b c $(brightnessctl -c backlight g 2>/dev/null) $(brightnessctl -c backlight m 2>/dev/null)\""];
+                initProc.running = true;
+                return;
             }
-            initProc.running = true;
+
+            if (root.hasBacklight) {
+                initProc.command = ["brightnessctl", "-c", "backlight", "-m"];
+                initProc.running = true;
+            }
         }
 
         readonly property Process initProc: Process {
+            property bool parsed: false
+            onRunningChanged: {
+                if (running)
+                    parsed = false;
+            }
             stdout: SplitParser {
                 onRead: data => {
+                    if (initProc.parsed)
+                        return;
+                    const line = data.trim();
+
                     if (monitor.isDdc) {
-                        const nums = data.match(/\d+/g) || [];
-                        const current = parseInt(nums[1], 10);
-                        const max = parseInt(nums[2], 10);
-                        if (isFinite(current) && isFinite(max) && max > 0) {
-                            monitor.brightness = Math.min(1, Math.max(0, current / max));
-                            root.setDdcWorking(monitor.busNum, true);
-                        } else {
-                            root.setDdcWorking(monitor.busNum, false);
+                        // صيغة الإخراج القياسية: VCP 10 C <current> <max>
+                        const match = line.match(/^VCP\s+10\s+C\s+(\d+)\s+(\d+)/);
+                        if (match) {
+                            const current = parseInt(match[1], 10);
+                            const max = parseInt(match[2], 10);
+                            if (isFinite(current) && isFinite(max) && max > 0) {
+                                monitor.brightness = Math.min(1, Math.max(0, current / max));
+                                monitor.ddcState = 1;
+                                initProc.parsed = true;
+                            }
                         }
                     } else {
-                        const parts = data.trim().split(/\s+/);
-                        const current = parseInt(parts[3], 10);
-                        const max = parseInt(parts[4], 10);
-                        monitor.brightness = (isFinite(current) && isFinite(max) && max > 0)
-                            ? Math.min(1, Math.max(0, current / max))
-                            : 0;
+                        const parts = line.split(",");
+                        if (parts.length >= 5) {
+                            const current = parseInt(parts[2], 10);
+                            const max = parseInt(parts[4], 10);
+                            if (isFinite(current) && isFinite(max) && max > 0) {
+                                monitor.brightness = Math.min(1, Math.max(0, current / max));
+                                initProc.parsed = true;
+                            }
+                        }
                     }
-                    if (monitor.modelData.name === root.focusedName())
-                        root.brightness = monitor.brightness;
                 }
             }
             onExited: exitCode => {
-                if (monitor.isDdc && exitCode !== 0)
-                    root.setDdcWorking(monitor.busNum, false);
+                if (monitor.isDdc && (!initProc.parsed || exitCode !== 0))
+                    monitor.ddcState = -1;
             }
+        }
+
+        // Coalescing queue: عملية واحدة فقط قيد التنفيذ لضمان الترتيب ومنع تزاحم I2C
+        readonly property Process setProc: Process {
+            onExited: {
+                if (monitor.pendingPercent >= 0) {
+                    const next = monitor.pendingPercent;
+                    monitor.pendingPercent = -1;
+                    monitor.dispatchSet(next);
+                }
+            }
+        }
+
+        function dispatchSet(roundedPercent: int): void {
+            if (monitor.isDdc) {
+                if (!monitor.ddcSupported)
+                    return;
+                setProc.command = ["ddcutil", "-b", monitor.busNum, "setvcp", "10", String(roundedPercent)];
+                setProc.running = true;
+                return;
+            }
+
+            if (!root.hasBacklight)
+                return;
+            setProc.command = ["brightnessctl", "-c", "backlight", "s", `${roundedPercent}%`];
+            setProc.running = true;
+            root.refreshDimSnapshot();
         }
 
         readonly property Connections rootConnections: Connections {
             target: root
-            function onDdcMonitorsChanged() {
-                monitor.refreshInit();
+            function onDdcProbedChanged() {
+                if (root.ddcProbed)
+                    monitor.refreshInit();
             }
             function onHasBacklightChanged() {
                 if (!monitor.isDdc)
                     monitor.refreshInit();
             }
-        }
-
-        onDdcUnsupportedChanged: {
-            if (monitor.ddcUnsupported)
-                initProc.command = [];
         }
 
         Component.onCompleted: monitor.refreshInit()
@@ -279,21 +402,19 @@ Singleton {
             const rounded = Math.round(value * 100);
             if (Math.round(monitor.brightness * 100) === rounded)
                 return;
+
             monitor.brightness = value;
-            if (monitor.modelData.name === root.focusedName())
-                root.brightness = value;
 
-            if (monitor.isDdc) {
-                if (!monitor.ddcSupported)
-                    return;
-                Quickshell.execDetached(["ddcutil", "-b", monitor.busNum, "setvcp", "10", String(rounded)]);
+            if (monitor.isDdc && !monitor.ddcSupported)
                 return;
+            if (!monitor.isDdc && !root.hasBacklight)
+                return;
+
+            if (setProc.running) {
+                monitor.pendingPercent = rounded;
+            } else {
+                monitor.dispatchSet(rounded);
             }
-
-            if (!root.hasBacklight)
-                return;
-            Quickshell.execDetached(["brightnessctl", "-c", "backlight", "s", `${rounded}%`]);
-            root.refreshDimSnapshot();
         }
     }
 }

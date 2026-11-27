@@ -15,7 +15,7 @@ BaseGeneralSettings {
     title: qsTr("Lock & Idle")
     icon: "\uf023"
 
-    property var theme: page.selectedTheme
+    readonly property var theme: page.selectedTheme
 
     property bool localLockEnabled: true
     property bool localAutoLockEnabled: false
@@ -35,6 +35,14 @@ BaseGeneralSettings {
         return Math.min(max, Math.max(min, Math.round(n)));
     }
 
+    function clampOpacity(value) {
+        let n = Number(value);
+        if (!isFinite(n))
+            n = 0.65;
+        const clamped = Math.min(1, Math.max(0, n));
+        return Math.round(clamped * 100) / 100;
+    }
+
     function formatDuration(sec) {
         const s = clampInt(sec, 0, 86400);
         if (s === 0)
@@ -48,21 +56,26 @@ BaseGeneralSettings {
         }
         const h = Math.floor(s / 3600);
         const m = Math.floor((s % 3600) / 60);
-        return m === 0 ? qsTr("%1 h").arg(h) : qsTr("%1 h %2 m").arg(h).arg(m);
+        const rest = s % 60;
+        if (m === 0 && rest === 0)
+            return qsTr("%1 h").arg(h);
+        if (rest === 0)
+            return qsTr("%1 h %2 m").arg(h).arg(m);
+        return qsTr("%1 h %2 m %3 s").arg(h).arg(m).arg(rest);
     }
 
     function formatPercent(value) {
-        return Math.round(Number(value) || 0) + "%";
+        return clampInt(value, 0, 100) + "%";
     }
 
     function formatOpacity(value) {
-        return Math.round((Number(value) || 0) * 100) + "%";
+        return Math.round(clampOpacity(value) * 100) + "%";
     }
 
     function setDimTimeout(value) {
-        localDimTimeoutSec = clampInt(value, 0, 3600);
-        if (localDimTimeoutSec > 0 && localLockTimeoutSec <= localDimTimeoutSec)
-            localLockTimeoutSec = localDimTimeoutSec + 60;
+        localDimTimeoutSec = clampInt(value, 0, 1800);
+        if (localDimTimeoutSec > 0 && localLockTimeoutSec < localDimTimeoutSec + 60)
+            localLockTimeoutSec = clampInt(localDimTimeoutSec + 60, 30, 7200);
     }
 
     function setLockTimeout(value) {
@@ -78,21 +91,25 @@ BaseGeneralSettings {
         localAutoSuspendSec = clampInt(value, 0, 7200);
     }
 
+    function setDimOverlayOpacity(value) {
+        localDimOverlayOpacity = clampOpacity(value);
+    }
+
     function setBacklightPercent(value) {
         localDimBacklightPercent = clampInt(value, 1, 100);
     }
 
     function syncFromConfig() {
-        localLockEnabled = App.lockEnabled;
-        localAutoLockEnabled = App.autoLockEnabled;
+        localLockEnabled = Boolean(App.lockEnabled);
+        localAutoLockEnabled = Boolean(App.autoLockEnabled);
         setDimTimeout(App.dimTimeoutSec);
         setLockTimeout(App.lockTimeoutSec);
         setDpmsTimeout(App.dpmsOffAfterLockSec);
         setAutoSuspend(App.autoSuspendSec);
-        localDimOverlayOpacity = Math.min(1, Math.max(0, App.dimOverlayOpacity));
+        setDimOverlayOpacity(App.dimOverlayOpacity);
         setBacklightPercent(App.dimBacklightPercent);
-        localRespectIdleInhibitors = App.respectIdleInhibitors;
-        localLockOnSuspend = App.lockOnSuspend;
+        localRespectIdleInhibitors = Boolean(App.respectIdleInhibitors);
+        localLockOnSuspend = Boolean(App.lockOnSuspend);
     }
 
     function serializeData() {
@@ -111,14 +128,15 @@ BaseGeneralSettings {
     }
 
     ColumnLayout {
-        spacing: theme.dimensions.spacingMedium
+        spacing: theme ? theme.dimensions.spacingMedium : 12
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignHCenter
 
         SectionCard {
             title: qsTr("Lock Behavior")
             subtitle: qsTr("Manual lock is always available. Auto-lock stays off until the lock flow is verified live.")
-            Layout.preferredWidth: 600
+            Layout.fillWidth: true
+            Layout.maximumWidth: 600
             Layout.alignment: Qt.AlignHCenter
 
             SettingSwitch {
@@ -130,6 +148,8 @@ BaseGeneralSettings {
 
             SettingSwitch {
                 Layout.fillWidth: true
+                enabled: page.localLockEnabled
+                opacity: enabled ? 1.0 : 0.5
                 label: qsTr("Auto-lock when idle")
                 isChecked: page.localAutoLockEnabled
                 onIsCheckedChanged: page.localAutoLockEnabled = isChecked
@@ -137,6 +157,8 @@ BaseGeneralSettings {
 
             SettingSwitch {
                 Layout.fillWidth: true
+                enabled: page.localLockEnabled
+                opacity: enabled ? 1.0 : 0.5
                 label: qsTr("Lock on suspend")
                 isChecked: page.localLockOnSuspend
                 onIsCheckedChanged: page.localLockOnSuspend = isChecked
@@ -144,6 +166,8 @@ BaseGeneralSettings {
 
             SettingSwitch {
                 Layout.fillWidth: true
+                enabled: page.localLockEnabled
+                opacity: enabled ? 1.0 : 0.5
                 label: qsTr("Respect idle inhibitors")
                 tooltip: qsTr("Fullscreen video and media players can prevent idle actions.")
                 isChecked: page.localRespectIdleInhibitors
@@ -154,8 +178,11 @@ BaseGeneralSettings {
         SectionCard {
             title: qsTr("Idle Timings")
             subtitle: qsTr("Values are seconds. 0 disables dim, DPMS-off, or auto-suspend; lock time is kept above dim time.")
-            Layout.preferredWidth: 600
+            Layout.fillWidth: true
+            Layout.maximumWidth: 600
             Layout.alignment: Qt.AlignHCenter
+            enabled: page.localLockEnabled
+            opacity: enabled ? 1.0 : 0.5
 
             SliderWithLabel {
                 Layout.fillWidth: true
@@ -171,7 +198,7 @@ BaseGeneralSettings {
             SliderWithLabel {
                 Layout.fillWidth: true
                 label: qsTr("Lock after (seconds)")
-                from: 30
+                from: page.localDimTimeoutSec > 0 ? page.localDimTimeoutSec + 60 : 30
                 to: 7200
                 stepSize: 30
                 value: page.localLockTimeoutSec
@@ -205,8 +232,11 @@ BaseGeneralSettings {
         SectionCard {
             title: qsTr("Dim Appearance")
             subtitle: qsTr("The overlay covers every screen; backlight dimming applies only to a detected panel.")
-            Layout.preferredWidth: 600
+            Layout.fillWidth: true
+            Layout.maximumWidth: 600
             Layout.alignment: Qt.AlignHCenter
+            enabled: page.localLockEnabled && page.localDimTimeoutSec > 0
+            opacity: enabled ? 1.0 : 0.5
 
             SliderWithLabel {
                 Layout.fillWidth: true
@@ -217,7 +247,7 @@ BaseGeneralSettings {
                 decimals: 2
                 value: page.localDimOverlayOpacity
                 valueFormatter: page.formatOpacity
-                onEditingFinished: value => page.localDimOverlayOpacity = Math.min(1, Math.max(0, value))
+                onEditingFinished: value => page.setDimOverlayOpacity(value)
             }
 
             SliderWithLabel {

@@ -23,9 +23,7 @@ Singleton {
     readonly property bool lockMonitorTarget: App.lockEnabled && App.autoLockEnabled && !root.killSwitch
     readonly property bool suspendMonitorTarget: App.lockEnabled && App.autoSuspendSec > 0 && !root.killSwitch
     readonly property bool sleepInhibitEnabled: App.lockEnabled && App.lockOnSuspend && !root.killSwitch
-    readonly property int effectiveLockTimeout: App.dimTimeoutSec > 0
-        ? Math.max(App.lockTimeoutSec, App.dimTimeoutSec + 60)
-        : App.lockTimeoutSec
+    readonly property int effectiveLockTimeout: App.dimTimeoutSec > 0 ? Math.max(App.lockTimeoutSec, App.dimTimeoutSec + 60) : App.lockTimeoutSec
 
     property bool dimActive: false
     property bool dimMonitorEnabled: false
@@ -43,13 +41,15 @@ Singleton {
     property var dpmsPendingScreens: []
     property string dpmsAction: ""
     property bool dpmsFallback: false
-    property bool _dpmsCancelled: false
+    property int _dpmsSeq: 0
+    property int _dpmsRunningSeq: 0
+    property bool _dpmsResumeOnExit: false
     property bool _sleepInFlight: false
     property bool _suspendPending: false
     property bool _inhibitIntentionalStop: false
 
     // --- shared PAM state (one context, never inside a lock surface) ---
-    property string pamUser: Quickshell.env("USER") || ""
+    property string pamUser: ""
     property bool pamBusy: false
     // True only while PAM is actually verifying a submitted response, not while waiting for input.
     property bool pamVerifying: false
@@ -156,8 +156,22 @@ Singleton {
         stdout: SplitParser {
             onRead: data => {
                 const name = data.trim();
-                if (name && !root.pamUser)
+                if (name) {
                     root.pamUser = name;
+                    if (!pam.active)
+                        pam.user = name;
+                }
+            }
+        }
+        onExited: exitCode => {
+            if (exitCode !== 0 && !root.pamUser) {
+                const fallback = Quickshell.env("USER") || "";
+                if (fallback) {
+                    root.pamUser = fallback;
+                    if (!pam.active)
+                        pam.user = fallback;
+                }
+                console.warn("[LockService] id -un failed (exit=" + exitCode + "); using USER env fallback");
             }
         }
     }
@@ -205,14 +219,33 @@ Singleton {
         stdout: SplitParser {
             onRead: data => root.handleLogindLine(data.trim())
         }
+        onExited: exitCode => {
+            if (!root.killSwitch) {
+                console.warn("[LockService] logindMonitor exited (code=" + exitCode + "); restarting in 2s");
+                logindRestartTimer.restart();
+            }
+        }
     }
 
+    Timer {
+        id: logindRestartTimer
+        interval: 2000
+        repeat: false
+        onTriggered: {
+            if (!root.killSwitch && !logindMonitor.running)
+                logindMonitor.running = true;
+        }
+    }
+
+    // stdinEnabled MUST be true so `cat` stays alive until Quickshell closes stdin or stops the process.
     Process {
         id: sleepInhibitProc
+        stdinEnabled: true
         command: ["systemd-inhibit", "--what=sleep", "--mode=delay", "--who=NibrasShell", "--why=Lock screen before suspend", "cat"]
         onExited: exitCode => {
-            if (exitCode !== 0 && !root._inhibitIntentionalStop)
-                console.warn("[LockService] systemd-inhibit failed (exit=" + exitCode + "); suspend will not be delayed");
+            if (!root._inhibitIntentionalStop)
+                console.warn("[LockService] systemd-inhibit exited unexpectedly (exit=" + exitCode + "); suspend will not be delayed");
+            root._inhibitIntentionalStop = false;
         }
     }
 
@@ -237,9 +270,9 @@ Singleton {
         }
     }
 
+    // Interval is managed strictly inside restartDpmsTimer() to avoid binding/imperative desync.
     Timer {
         id: dpmsTimer
-        interval: Math.max(1, App.dpmsOffAfterLockSec) * 1000
         repeat: false
         onTriggered: {
             if (root.lockRequested && lock.secure && !root.killSwitch)
@@ -271,7 +304,7 @@ Singleton {
             root.lockMonitorEnabled = root.lockMonitorTarget && !root.lockRequested;
             root.suspendMonitorEnabled = root.suspendMonitorTarget;
             root.restartDpmsTimer();
-            root.acquireSleepInhibit("rearm");
+            root.syncSleepInhibit("rearm");
             console.info("[LockService] idle monitors armed: dim=" + dimMonitor.timeout + "s lock=" + lockMonitor.timeout + "s suspend=" + suspendMonitor.timeout + "s");
         }
     }
@@ -279,9 +312,11 @@ Singleton {
     Process {
         id: dpmsProc
         onExited: exitCode => {
-            if (root._dpmsCancelled) {
-                root._dpmsCancelled = false;
-                console.info("[LockService] DPMS off sequence cancelled (intentional)");
+            if (root._dpmsRunningSeq !== root._dpmsSeq) {
+                if (root._dpmsResumeOnExit) {
+                    root._dpmsResumeOnExit = false;
+                    root.startDpmsSequence("on");
+                }
                 return;
             }
             if (exitCode !== 0)
@@ -295,11 +330,15 @@ Singleton {
         root.resolvePamUser();
         root.chooseAuthScreen();
         root.rearmDimMonitor("startup");
-        sessionByEnvProc.running = true;
-        root.acquireSleepInhibit("startup");
+        if (Quickshell.env("XDG_SESSION_ID"))
+            sessionByEnvProc.running = true;
+        else
+            sessionByPidProc.running = true;
+        root.syncSleepInhibit("startup");
     }
 
     Component.onDestruction: {
+        root.passwordBuffer = "";
         root.releaseSleepInhibit("destruction");
         // Best effort only: ext-session-lock keeps the display locked if we die.
         try {
@@ -308,17 +347,11 @@ Singleton {
         } catch (e) {}
     }
 
-    onPamUserChanged: {
-        if (root.pamUser && !pam.active) {
-            pam.user = root.pamUser;
-            console.info("[LockService] PAM user set from OS identity (not App.username)");
-        }
-    }
-
     Connections {
         target: Quickshell
         function onScreensChanged() {
-            root.chooseAuthScreen();
+            if (!root.lockRequested || !root.validScreenName(root.authScreenName))
+                root.chooseAuthScreen();
         }
     }
 
@@ -328,9 +361,7 @@ Singleton {
         function onPamMessage() {
             const required = pam.responseRequired;
             root.lastError = pam.messageIsError ? pam.message : "";
-            root.pamStatus = required
-                ? (pam.responseVisible ? qsTr("Password required") : qsTr("Authenticating…"))
-                : (pam.message || root.pamStatus);
+            root.pamStatus = required ? (pam.responseVisible ? qsTr("Password required") : qsTr("Authenticating…")) : (pam.message || root.pamStatus);
             console.info("[LockService] PAM message: required=" + required + " visible=" + pam.responseVisible + " error=" + pam.messageIsError + " test=" + root._testMode);
 
             if (required && root._testMode && root._pendingTestPassword !== "") {
@@ -397,25 +428,17 @@ Singleton {
     }
 
     function validScreenName(name: string): bool {
-        return root.validScreens().some(s => s.name === name);
+        return name !== "" && root.validScreens().some(s => s.name === name);
     }
 
     function chooseAuthScreen(): void {
         const screens = root.validScreens();
         const focused = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
-        root.authScreenName = (focused && screens.some(s => s.name === focused))
-            ? focused
-            : (screens.length > 0 ? screens[0].name : "");
+        root.authScreenName = (focused && screens.some(s => s.name === focused)) ? focused : (screens.length > 0 ? screens[0].name : "");
     }
 
     function resolvePamUser(): void {
-        if (root.pamUser) {
-            if (!pam.active)
-                pam.user = root.pamUser;
-            console.info("[LockService] PAM user resolved from OS environment");
-        } else {
-            osUserProc.running = true;
-        }
+        osUserProc.running = true;
     }
 
     function handleLogindLine(raw: string): void {
@@ -452,9 +475,9 @@ Singleton {
             root._sleepInFlight = true;
             root._suspendPending = false;
             suspendSafety.restart();
-            root.acquireSleepInhibit("prepare-sleep");
+            root.syncSleepInhibit("prepare-sleep");
             root.lock();
-            if (lock.secure) {
+            if (lock.secure && !root.unlocking) {
                 root.releaseSleepInhibit("secure");
                 suspendSafety.stop();
                 root._sleepInFlight = false;
@@ -466,10 +489,17 @@ Singleton {
         suspendSafety.stop();
         root.dpmsOn("resume");
         root.restartDpmsTimer();
-        if (root.dimActive)
-            Brightness.restoreDim();
+        root.stopDim();
         root.restorePasswordFocus();
-        root.acquireSleepInhibit("resume");
+        root.syncSleepInhibit("resume");
+    }
+
+    function syncSleepInhibit(reason: string): void {
+        if (root.sleepInhibitEnabled) {
+            root.acquireSleepInhibit(reason);
+        } else {
+            root.releaseSleepInhibit(reason);
+        }
     }
 
     function acquireSleepInhibit(reason: string): void {
@@ -499,10 +529,10 @@ Singleton {
         root._sleepInFlight = true;
         root._suspendPending = true;
         suspendSafety.restart();
-        root.acquireSleepInhibit("auto-suspend");
-        if (!root.lockRequested)
+        root.syncSleepInhibit("auto-suspend");
+        if (!root.lockRequested || root.unlocking)
             root.lock();
-        if (lock.secure)
+        if (lock.secure && !root.unlocking)
             root.doAutoSuspend();
     }
 
@@ -520,7 +550,7 @@ Singleton {
     // --- DPMS ---
     function restartDpmsTimer(): void {
         const interval = Math.max(1, App.dpmsOffAfterLockSec) * 1000;
-        if (!root.lockRequested || !lock.secure || App.dpmsOffAfterLockSec <= 0 || root.killSwitch) {
+        if (!root.lockRequested || root.unlocking || !lock.secure || App.dpmsOffAfterLockSec <= 0 || root.killSwitch) {
             if (dpmsTimer.running)
                 dpmsTimer.stop();
             return;
@@ -533,6 +563,16 @@ Singleton {
         dpmsTimer.restart();
     }
 
+    function startDpmsSequence(action: string): void {
+        dpmsTimer.stop();
+        root._dpmsSeq++;
+        root.dpmsAction = action;
+        root.dpmsFallback = false;
+        root.dpmsPendingScreens = root.validScreens().map(s => s.name);
+        console.info("[LockService] DPMS " + action + " for " + root.dpmsPendingScreens.length + " screen(s)");
+        root.nextDpmsCommand();
+    }
+
     function setDpms(action: string): void {
         const wasOff = root.dpmsOff;
         if (action === "on")
@@ -542,15 +582,19 @@ Singleton {
             if (root.dpmsAction === action)
                 return; // never restart an already running on/off sequence
             if (action === "on") {
-                // Wake wins over an in-flight off sequence. Mark the abort as
-                // intentional so onExited never treats it as a Lua failure.
-                root._dpmsCancelled = true;
+                // Wake wins over an in-flight off sequence: abort off, then run full "on"
+                // across all monitors so any monitor already turned off wakes back up.
+                root._dpmsSeq++;
                 root.dpmsAction = "on";
                 root.dpmsPendingScreens = [];
                 root.dpmsFallback = false;
+                root._dpmsResumeOnExit = true;
+                console.info("[LockService] DPMS wake cancelling in-flight off sequence");
                 dpmsProc.running = false;
-                console.info("[LockService] DPMS wake cancelled in-flight off sequence");
-                root.finishDpmsOn();
+                if (!dpmsProc.running && root._dpmsResumeOnExit) {
+                    root._dpmsResumeOnExit = false;
+                    root.startDpmsSequence("on");
+                }
                 return;
             }
             return; // off requested while waking: let the on sequence finish
@@ -566,12 +610,7 @@ Singleton {
         if (action === "off" && wasOff)
             return;
 
-        dpmsTimer.stop();
-        root.dpmsAction = action;
-        root.dpmsFallback = false;
-        root.dpmsPendingScreens = root.validScreens().map(s => s.name);
-        console.info("[LockService] DPMS " + action + " for " + root.dpmsPendingScreens.length + " screen(s)");
-        root.nextDpmsCommand();
+        root.startDpmsSequence(action);
     }
 
     function finishDpmsOn(): void {
@@ -584,7 +623,9 @@ Singleton {
     function nextDpmsCommand(): void {
         if (root.dpmsPendingScreens.length > 0) {
             const monitor = root.dpmsPendingScreens.shift();
-            dpmsProc.command = ["hyprctl", "dispatch", `hl.dsp.dpms({ action = "${root.dpmsAction}", monitor = "${monitor}" })`];
+            const safeMonitor = String(monitor).replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+            root._dpmsRunningSeq = root._dpmsSeq;
+            dpmsProc.command = ["hyprctl", "dispatch", `hl.dsp.dpms({ action = "${root.dpmsAction}", monitor = "${safeMonitor}" })`];
             dpmsProc.running = true;
             return;
         }
@@ -601,15 +642,14 @@ Singleton {
     }
 
     function dpmsOn(source: string): void {
-        if (!root.dpmsOff)
+        const turningOff = dpmsProc.running && root.dpmsAction === "off";
+        if (!root.dpmsOff && !turningOff)
             return;
         console.info("[LockService] DPMS wake (" + source + ")");
         root.setDpms("on");
     }
 
     function noteActivity(source: string): void {
-        if (!root.dpmsOff)
-            return;
         root.dpmsOn("activity:" + source);
     }
 
@@ -641,7 +681,7 @@ Singleton {
     }
 
     function pamRespond(text: string): bool {
-        if (!pam.responseRequired)
+        if (!pam.responseRequired || root.pamVerifying)
             return false;
         root.pamVerifying = true;
         pam.respond(text);
@@ -663,7 +703,7 @@ Singleton {
     }
 
     function submitPassword(): void {
-        if (!root.lockRequested)
+        if (!root.lockRequested || root.unlocking || root.pamVerifying)
             return;
         if (!root.pamBusy)
             root.pamStart();
@@ -681,13 +721,13 @@ Singleton {
     }
 
     function restorePasswordFocus(): void {
-        if (!root.lockRequested || !root.authScreenName)
+        if (!root.lockRequested || root.unlocking || !root.authScreenName)
             return;
         passwordFocusRequested(root.authScreenName);
     }
 
     function forwardInput(key: int, text: string): void {
-        if (!root.lockRequested)
+        if (!root.lockRequested || root.unlocking || root.pamVerifying)
             return;
         if (key === Qt.Key_Backspace) {
             root.passwordBuffer = root.passwordBuffer.slice(0, -1);
@@ -701,14 +741,20 @@ Singleton {
 
     // --- lock / unlock ---
     function lock(): void {
-        if (root.killSwitch || !App.lockEnabled || root.lockRequested || root.unlocking) {
-            console.warn("[LockService] lock refused (killSwitch=" + root.killSwitch + " enabled=" + App.lockEnabled + " locked=" + root.lockRequested + ")");
+        if (root.killSwitch || !App.lockEnabled) {
+            console.warn("[LockService] lock refused (killSwitch=" + root.killSwitch + " enabled=" + App.lockEnabled + ")");
             return;
         }
+        // إذا كان فك القفل قيد التلاشي (unlockCommitTimer) وطُلب القفل مجدداً (مثلاً عند السبات)، نُلغي فك القفل فوراً
+        const wasUnlocking = root.unlocking;
+        if (root.lockRequested && !wasUnlocking)
+            return;
+
         root.stopDim();
         pamStartTimer.stop();
         unlockCommitTimer.stop();
-        root.chooseAuthScreen();
+        if (!root.validScreenName(root.authScreenName))
+            root.chooseAuthScreen();
         root.unlocking = false;
         root.lockRequested = true;
         root.passwordBuffer = "";
@@ -716,7 +762,7 @@ Singleton {
         root.failedAttempts = 0;
         root.lastError = "";
         root.pamStatus = qsTr("Enter password");
-        console.info("[LockService] lock: screen=" + root.authScreenName);
+        console.info("[LockService] lock: screen=" + root.authScreenName + (wasUnlocking ? " (aborted unlock)" : ""));
         EventBus.emit(Events.REQUEST_LOCK);
         EventBus.emit(Events.LOCK_STATE_CHANGED, true);
         Qt.callLater(root.restartDpmsTimer);
@@ -731,7 +777,7 @@ Singleton {
         dpmsTimer.stop();
         pamStartTimer.stop();
         root.dpmsOn("unlock");
-        Brightness.restoreDim();
+        root.stopDim();
         root.passwordBuffer = "";
         root.pamBusy = false;
         root.pamVerifying = false;
@@ -822,7 +868,7 @@ Singleton {
                 root.stopDim();
         }
         function onLockOnSuspendChanged() {
-            root.acquireSleepInhibit("lockOnSuspend changed");
+            root.syncSleepInhibit("lockOnSuspend changed");
         }
         function onDpmsOffAfterLockSecChanged() {
             root.restartDpmsTimer();

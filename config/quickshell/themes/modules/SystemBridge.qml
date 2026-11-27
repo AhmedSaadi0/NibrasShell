@@ -19,6 +19,7 @@ Item {
     property bool _m3ProcessExited: false
     property int _m3ExitCode: -1
     property int _m3ExitStatus: -1
+    property string _pendingCustomSchemeName: ""
     readonly property int latestM3RequestId: _m3RequestSequence
 
     // دالة لتطبيق الثيم العام (GTK/Qt)
@@ -26,23 +27,28 @@ Item {
         if (!settings)
             return;
 
+        const konsoleProfile = String(settings.konsoleProfile || "");
+        const fontName = String(settings.fontName || "Sans");
+
         // Qt & Plasma
         if (!settings.enableDynamicColoring)
             _dispatch("Plasma Color", Utils.Helper.changePlasmaColor(settings.plasmaColorScheme));
         _dispatch("Plasma Icons", Utils.Helper.changePlasmaIcons(settings.themeIcons));
-        _dispatch("Konsole Profile", Utils.Helper.changeKonsoleProfile(settings.konsoleProfile));
-        if (!settings.enableDynamicColoring)
-            _dispatch("Konsole Running Sessions Profile", Utils.Helper.applyKonsoleProfileToRunningSessions(settings.konsoleProfile.replace(".profile", "")));
+        if (konsoleProfile !== "") {
+            _dispatch("Konsole Profile", Utils.Helper.changeKonsoleProfile(konsoleProfile));
+            if (!settings.enableDynamicColoring)
+                _dispatch("Konsole Running Sessions Profile", Utils.Helper.applyKonsoleProfileToRunningSessions(konsoleProfile.replace(/\.profile$/, "")));
+        }
         _dispatch("Qt Style", Utils.Helper.changeQtStyle(settings.qtThemeStyle));
         _dispatch("Kvantum Theme", Utils.Helper.changeKvantumTheme(settings.kvantumTheme));
 
         // NOTE: raw values, no shell quoting — App.dispatchCommand executes argv
         // directly (no shell), and kwriteconfig stores the value verbatim.
         // (Quoting here would land literally in kdeglobals, breaking the font.)
-        const generalFont = `${settings.fontName},11,-1,5,50,0,0,0,0,0`;
-        const titleFont = `${settings.fontName},11,-1,5,75,0,0,0,0,0`;
-        const smallFont = `${settings.fontName},9,-1,5,75,0,0,0,0,0`;
-        const toolBarFont = `${settings.fontName},10,-1,5,75,0,0,0,0,0`;
+        const generalFont = `${fontName},11,-1,5,50,0,0,0,0,0`;
+        const titleFont = `${fontName},11,-1,5,75,0,0,0,0,0`;
+        const smallFont = `${fontName},9,-1,5,75,0,0,0,0,0`;
+        const toolBarFont = `${fontName},10,-1,5,75,0,0,0,0,0`;
         const monoFont = "FantasqueSansM Nerd Font Mono,10,-1,5,50,0,0,0,0,0";
 
         _dispatch("Plasma General Font", Utils.Helper.changePlasmaFont({
@@ -75,21 +81,25 @@ Item {
             key: "toolBarFont",
             group: "General"
         }));
+
         // GTK
         _dispatch("GTK Theme", Utils.Helper.changeGtkTheme(settings.gtkTheme));
         _dispatch("GTK Icons", Utils.Helper.changeGtkIcons(settings.themeIcons));
         _dispatch("GTK Color Schema", Utils.Helper.changeGtkColorSchemeTheme(settings.themeMode));
         _dispatch("GTK 4 Clean", Utils.Helper.removeOldGtk4Theme());
         _dispatch("GTK 4 Apply", Utils.Helper.changeGtk4Theme(settings.gtkTheme));
-        _dispatch("GTK Font", Utils.Helper.changeGtkFont(settings.fontName, typography.baseFontSize));
+        if (typography && typography.baseFontSize !== undefined)
+            _dispatch("GTK Font", Utils.Helper.changeGtkFont(fontName, typography.baseFontSize));
         _dispatch("Cursor Theme", Utils.Helper.changeCursorTheme(settings.cursorTheme));
         _dispatch("GTK Cursor Theme", Utils.Helper.changeGtkCursorTheme(settings.cursorTheme));
         _dispatch("Cursor Size", Utils.Helper.changeCursorSize(settings.cursorSize));
 
         // Accent Color
-        if (!settings.enableDynamicColoring && settings.enableAccentColoring) {
+        if (!settings.enableDynamicColoring && settings.enableAccentColoring && colors && colors.primary !== undefined) {
             accentColorTimer.accentColor = colors.primary;
-            accentColorTimer.start();
+            accentColorTimer.restart();
+        } else {
+            accentColorTimer.stop();
         }
     }
 
@@ -98,13 +108,13 @@ Item {
         if (!request || !request.enabled)
             return -1;
 
-        const wallpaperPath = request.wallpaperPath || "";
+        const wallpaperPath = String(request.wallpaperPath || "").trim();
         if (wallpaperPath === "" || wallpaperPath.indexOf("/") === -1) {
             console.warn("[SystemBridge] Skipping M3, invalid wallpaper path:", wallpaperPath);
             return -1;
         }
 
-        const themeName = request.themeName || "";
+        const themeName = String(request.themeName || "").trim();
         if (themeName === "") {
             console.warn("[SystemBridge] Skipping M3, missing theme name");
             return -1;
@@ -117,7 +127,7 @@ Item {
             wallpaperPath: wallpaperPath,
             scheme: request.scheme,
             contrast: request.contrast,
-            konsoleProfile: request.konsoleProfile || "MaterialYouAlt.profile"
+            konsoleProfile: String(request.konsoleProfile || "MaterialYouAlt.profile")
         };
         const command = Utils.Helper.applyM3PlasmaColor({
             selectedWallpaperPath: wallpaperPath,
@@ -128,7 +138,7 @@ Item {
 
         console.info("[SystemBridge] Applying M3 on:", wallpaperPath, command);
 
-        if (m3Process.running) {
+        if (m3Process.running || root._activeM3Request) {
             root._pendingM3Request = {
                 command: command,
                 meta: meta
@@ -159,6 +169,14 @@ Item {
         m3Process.running = true;
     }
 
+    function _drainPendingM3() {
+        if (m3Process.running || root._activeM3Request || !root._pendingM3Request)
+            return;
+        const nextRequest = root._pendingM3Request;
+        root._pendingM3Request = null;
+        root._startM3Request(nextRequest.command, nextRequest.meta);
+    }
+
     function _parseM3Error(output) {
         const lines = output.split(/\r?\n/);
         for (const line of lines) {
@@ -178,25 +196,41 @@ Item {
 
     function _parseM3Output(output, request) {
         const lines = output.split(/\r?\n/);
-        const paletteLines = lines
-            .map(line => line.trim())
-            .filter(line => line.startsWith("__M3_PALETTE__:"));
+        const paletteLines = lines.map(line => line.trim()).filter(line => line.startsWith("__M3_PALETTE__:"));
 
         if (paletteLines.length !== 1)
-            return { ok: false, reason: "Expected exactly one Matugen palette line" };
+            return {
+                ok: false,
+                reason: "Expected exactly one Matugen palette line"
+            };
 
         try {
             const envelope = JSON.parse(paletteLines[0].substring("__M3_PALETTE__:".length));
             if (!envelope || typeof envelope !== "object" || Array.isArray(envelope))
-                return { ok: false, reason: "Invalid Matugen palette envelope" };
+                return {
+                    ok: false,
+                    reason: "Invalid Matugen palette envelope"
+                };
             if (envelope.mode !== request.themeMode)
-                return { ok: false, reason: `Matugen mode mismatch: ${envelope.mode} !== ${request.themeMode}` };
+                return {
+                    ok: false,
+                    reason: `Matugen mode mismatch: ${envelope.mode} !== ${request.themeMode}`
+                };
             if (!envelope.colors || typeof envelope.colors !== "object" || Array.isArray(envelope.colors))
-                return { ok: false, reason: "Matugen palette envelope is missing colors" };
+                return {
+                    ok: false,
+                    reason: "Matugen palette envelope is missing colors"
+                };
 
-            return { ok: true, palette: envelope.colors };
+            return {
+                ok: true,
+                palette: envelope.colors
+            };
         } catch (err) {
-            return { ok: false, reason: `Invalid Matugen palette JSON: ${err.message}` };
+            return {
+                ok: false,
+                reason: `Invalid Matugen palette JSON: ${err.message}`
+            };
         }
     }
 
@@ -240,34 +274,37 @@ Item {
         if (logLines.length > 0)
             console.info("[M3] " + logLines.join("\n"));
 
-        const nextRequest = root._pendingM3Request;
-        root._pendingM3Request = null;
-
         const isCurrent = request.requestId === root._m3RequestSequence;
-        if (nextRequest)
-            root._startM3Request(nextRequest.command, nextRequest.meta);
+        if (root._pendingM3Request)
+            Qt.callLater(root._drainPendingM3);
 
         if (!isCurrent) {
             console.info("[SystemBridge] Ignoring stale M3 request", request.requestId);
             return;
         }
 
-        if (exitCode !== 0 || stderrText.trim() !== "") {
-            const reason = stderrText.trim() || root._parseM3Error(stdoutText) || `exit ${exitCode} (${exitStatus})`;
+        const explicitError = root._parseM3Error(stdoutText);
+        if (exitCode !== 0 || explicitError !== "") {
+            const reason = explicitError || stderrText.trim() || `exit ${exitCode} (${exitStatus})`;
             console.error("[SystemBridge] M3 failed:", reason);
             root.m3Failed(reason, request);
             return;
         }
 
+        if (stderrText.trim() !== "")
+            console.warn("[SystemBridge] M3 stderr (non-fatal):", stderrText.trim());
+
         const parsed = root._parseM3Output(stdoutText, request);
         if (!parsed.ok) {
-            console.error("[SystemBridge] M3 failed:", parsed.reason);
-            root.m3Failed(parsed.reason, request);
+            const reason = stderrText.trim() ? `${parsed.reason} (${stderrText.trim()})` : parsed.reason;
+            console.error("[SystemBridge] M3 failed:", reason);
+            root.m3Failed(reason, request);
             return;
         }
 
-        const profile = request.konsoleProfile.replace(".profile", "");
-        _dispatch("Konsole M3 Refresh", Utils.Helper.applyKonsoleProfileToRunningSessions(profile));
+        const profile = request.konsoleProfile.replace(/\.profile$/, "");
+        if (profile !== "")
+            _dispatch("Konsole M3 Refresh", Utils.Helper.applyKonsoleProfileToRunningSessions(profile));
         root.m3Applied(parsed.palette, request);
     }
 
@@ -275,29 +312,61 @@ Item {
     FileView {
         id: customPlasmaColorWriter
         watchChanges: false
-        onSaved: console.info("[SystemBridge] Custom Plasma color scheme written successfully.")
-        onSaveFailed: error => console.error("[SystemBridge] Failed to write custom Plasma color scheme:", error)
+        onSaved: {
+            console.info("[SystemBridge] Custom Plasma color scheme written successfully.");
+            const schemeName = root._pendingCustomSchemeName;
+            root._pendingCustomSchemeName = "";
+            if (schemeName !== "")
+                root._dispatch("Plasma AI Color Scheme", Utils.Helper.changePlasmaColor(schemeName));
+        }
+        onSaveFailed: error => {
+            root._pendingCustomSchemeName = "";
+            console.error("[SystemBridge] Failed to write custom Plasma color scheme:", error);
+        }
     }
 
-    /**
-     * @function applyCustomColorScheme
-     * @description Generates a KDE Plasma .colors file from theme colors, writes it to disk, and applies it.
-     * @param {var} colors - The theme object containing color properties (_primary, _secondary, etc.).
-     * @param {string} schemeName - The name for the new color scheme.
-     */
+    Process {
+        id: colorSchemeDirPrep
+        property string pendingFilePath: ""
+        property string pendingContent: ""
+        property string pendingSchemeName: ""
+        onExited: exitCode => {
+            if (exitCode !== 0) {
+                console.error("[SystemBridge] Failed to ensure color-schemes directory (exit=" + exitCode + ")");
+                return;
+            }
+            root._pendingCustomSchemeName = pendingSchemeName;
+            customPlasmaColorWriter.path = pendingFilePath;
+            customPlasmaColorWriter.setText(pendingContent);
+        }
+    }
+
     function applyCustomColorScheme(colors, schemeName) {
         if (!colors || !schemeName)
             return;
 
-        const content = Utils.Helper.generateAiPlasmaColorFile(colors, schemeName);
-        const folderPath = App.homePath + ".local/share/color-schemes/";
-        const filePath = folderPath + schemeName + ".colors";
+        const safeName = String(schemeName).trim().replace(/[\/\\]/g, "_").replace(/\.\.+/g, "_");
+        if (safeName === "" || safeName === "." || safeName === "_") {
+            console.warn("[SystemBridge] Invalid custom color scheme name:", schemeName);
+            return;
+        }
+
+        const baseHome = String(App.homePath || "").replace(/\/+$/, "");
+        if (baseHome === "") {
+            console.error("[SystemBridge] App.homePath is empty; cannot write color scheme");
+            return;
+        }
+
+        const content = Utils.Helper.generateAiPlasmaColorFile(colors, safeName);
+        const folderPath = `${baseHome}/.local/share/color-schemes`;
+        const filePath = `${folderPath}/${safeName}.colors`;
 
         console.info("[SystemBridge] Writing custom Plasma color scheme to:", filePath);
-        customPlasmaColorWriter.path = filePath;
-        customPlasmaColorWriter.setText(content);
-
-        _dispatch("Plasma AI Color Scheme", Utils.Helper.changePlasmaColor(schemeName));
+        colorSchemeDirPrep.pendingFilePath = filePath;
+        colorSchemeDirPrep.pendingContent = content;
+        colorSchemeDirPrep.pendingSchemeName = safeName;
+        colorSchemeDirPrep.command = ["mkdir", "-p", folderPath];
+        colorSchemeDirPrep.running = true;
     }
 
     function _dispatch(desc, cmd) {

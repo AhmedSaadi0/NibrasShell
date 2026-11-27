@@ -45,36 +45,67 @@ WlSessionLockSurface {
 
     // Identical cache key to Desktop.qml: physical screen pixels, static per screen.
     readonly property real wallpaperDpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
-    readonly property size wallpaperMaxSourceSize: Qt.size(
-        Math.round((screen ? screen.width : Screen.width) * wallpaperDpr),
-        Math.round((screen ? screen.height : Screen.height) * wallpaperDpr))
+    readonly property size wallpaperMaxSourceSize: Qt.size(Math.round((screen ? screen.width : Screen.width) * wallpaperDpr), Math.round((screen ? screen.height : Screen.height) * wallpaperDpr))
 
     color: ThemeManager.selectedTheme.colors.surface
 
     function isModifier(key: int): bool {
-        return key === Qt.Key_Shift || key === Qt.Key_Control || key === Qt.Key_Alt
-            || key === Qt.Key_Meta || key === Qt.Key_AltGr || key === Qt.Key_CapsLock;
+        return key === Qt.Key_Shift || key === Qt.Key_Control || key === Qt.Key_Alt || key === Qt.Key_Meta || key === Qt.Key_AltGr || key === Qt.Key_CapsLock;
+    }
+
+    function isForwardableKey(event): bool {
+        if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+            return false;
+        if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+            return true;
+        const text = event.text || "";
+        if (text.length === 0)
+            return false;
+        const code = text.charCodeAt(0);
+        // تجاهل أحرف التحكم ASCII (مثل Escape \x1b و Tab \t و Delete \x7f)
+        return code >= 32 && code !== 127;
+    }
+
+    function focusPasswordField(): void {
+        if (!root.isPrimary || !root.authCardVisible || !passwordField)
+            return;
+        passwordField.forceActiveFocus();
+        passwordField.deselect();
+        passwordField.cursorPosition = passwordField.text.length;
+    }
+
+    function syncPasswordFieldFromService(): void {
+        if (!passwordField || !service)
+            return;
+        const buf = service.passwordBuffer || "";
+        if (passwordField.text !== buf) {
+            passwordField.text = buf;
+            passwordField.cursorPosition = buf.length;
+        }
     }
 
     function updateThemeData(): void {
-        const clockSettings = ThemeManager.selectedTheme.desktopClock;
-        const isDepth = (clockSettings && clockSettings.enabled && clockSettings.depthEffectEnabled) || false;
+        const theme = ThemeManager.selectedTheme;
+        const clockSettings = theme ? theme.desktopClock : null;
+        const isDepth = Boolean(clockSettings && clockSettings.enabled && clockSettings.depthEffectEnabled);
         root.depthEnabled = isDepth;
         root.currentOverlay = isDepth ? (clockSettings.depthOverlayPath || "") : "";
     }
 
     function revealAuthCard(source: string): void {
+        if (!root.isPrimary)
+            return;
         const wasVisible = root.authCardVisible;
         root.authCardVisible = true;
         autoHideTimer.restart();
-        if (!wasVisible && root.isPrimary)
+        if (!wasVisible)
             console.info("[LockSurface] auth card revealed (" + source + ") screen=" + screenName);
-        if (root.isPrimary && passwordField)
-            Qt.callLater(() => passwordField.forceActiveFocus());
+        Qt.callLater(root.focusPasswordField);
     }
 
     Component.onCompleted: {
         root.updateThemeData();
+        root.syncPasswordFieldFromService();
         pointerSettleTimer.start();
         if (root.isPrimary)
             console.info("[LockSurface] primary=" + screenName + " depthActive=" + root.depthActive + " overlay=" + (root.currentOverlay !== "") + " auth=" + root.authCardVisible);
@@ -82,8 +113,23 @@ WlSessionLockSurface {
 
     // Component.onCompleted fires before the compositor maps the lock surface.
     onVisibleChanged: {
-        if (visible)
-            expandDelay.restart();
+        if (visible) {
+            if (!service || !service.unlocking)
+                expandDelay.restart();
+        } else {
+            expandDelay.stop();
+        }
+    }
+
+    onIsPrimaryChanged: {
+        if (!root.isPrimary) {
+            autoHideTimer.stop();
+            root.authCardVisible = false;
+        } else {
+            root.syncPasswordFieldFromService();
+            if (root.authCardVisible)
+                Qt.callLater(root.focusPasswordField);
+        }
     }
 
     onDepthActiveChanged: {
@@ -93,15 +139,23 @@ WlSessionLockSurface {
 
     Connections {
         target: ThemeManager
-        function onSelectedThemeUpdated() { root.updateThemeData(); }
-        function onCreatingOverlayImageFinished(path) { root.currentOverlay = path; }
+        function onSelectedThemeUpdated() {
+            root.updateThemeData();
+        }
+        function onCreatingOverlayImageFinished(path) {
+            if (root.depthEnabled)
+                root.currentOverlay = path || "";
+        }
     }
 
     Timer {
         id: expandDelay
         interval: 16
         repeat: false
-        onTriggered: root.frameExpanded = true
+        onTriggered: {
+            if (root.visible && (!service || !service.unlocking))
+                root.frameExpanded = true;
+        }
     }
 
     Timer {
@@ -143,15 +197,35 @@ WlSessionLockSurface {
                     id: expandScale
                     xScale: root.frameExpanded ? 1 : root.initialXScale
                     yScale: root.frameExpanded ? 1 : root.initialYScale
-                    Behavior on xScale { NumberAnimation { duration: root.frameExpanded ? 280 : 240; easing.type: Easing.OutCubic } }
-                    Behavior on yScale { NumberAnimation { duration: root.frameExpanded ? 280 : 240; easing.type: Easing.OutCubic } }
+                    Behavior on xScale {
+                        NumberAnimation {
+                            duration: root.frameExpanded ? 280 : 240
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                    Behavior on yScale {
+                        NumberAnimation {
+                            duration: root.frameExpanded ? 280 : 240
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                 },
                 Translate {
                     id: expandTranslate
                     x: root.frameExpanded ? 0 : root.initialTranslateX
                     y: root.frameExpanded ? 0 : root.initialTranslateY
-                    Behavior on x { NumberAnimation { duration: root.frameExpanded ? 280 : 240; easing.type: Easing.OutCubic } }
-                    Behavior on y { NumberAnimation { duration: root.frameExpanded ? 280 : 240; easing.type: Easing.OutCubic } }
+                    Behavior on x {
+                        NumberAnimation {
+                            duration: root.frameExpanded ? 280 : 240
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                    Behavior on y {
+                        NumberAnimation {
+                            duration: root.frameExpanded ? 280 : 240
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                 }
             ]
 
@@ -194,9 +268,9 @@ WlSessionLockSurface {
                     return;
                 if (service)
                     service.noteActivity("pointer");
-                root.revealAuthCard("pointer-enter");
                 if (!root.isPrimary && service)
                     service.switchAuthScreen(screenName);
+                root.revealAuthCard("pointer-enter");
             }
             onExited: pointerArea.lastPos = Qt.point(-1000, -1000)
 
@@ -213,18 +287,18 @@ WlSessionLockSurface {
                     return;
                 if (service)
                     service.noteActivity("pointer");
-                root.revealAuthCard("pointer");
                 if (!root.isPrimary && service)
                     service.switchAuthScreen(screenName);
+                root.revealAuthCard("pointer");
             }
 
             onPressed: mouse => {
                 mouse.accepted = false;
                 if (service)
                     service.noteActivity("pointer");
-                root.revealAuthCard("pointer");
                 if (!root.isPrimary && service)
                     service.switchAuthScreen(screenName);
+                root.revealAuthCard("pointer");
             }
 
             onReleased: mouse.accepted = false
@@ -257,17 +331,27 @@ WlSessionLockSurface {
         Keys.onPressed: event => {
             if (service)
                 service.noteActivity("key");
-            root.revealAuthCard("key");
             if (root.isModifier(event.key))
                 return;
+            if (event.key === Qt.Key_Escape) {
+                if (root.authCardVisible && (!service || !service.pamVerifying)) {
+                    root.authCardVisible = false;
+                    autoHideTimer.stop();
+                }
+                event.accepted = true;
+                return;
+            }
+            if (!root.isForwardableKey(event)) {
+                event.accepted = true;
+                return;
+            }
+            if (!root.isPrimary && service)
+                service.switchAuthScreen(screenName);
+            root.revealAuthCard("key");
             const key = event.key;
             const text = event.text;
-            if (!root.isPrimary && service) {
-                service.switchAuthScreen(screenName);
+            if (service)
                 Qt.callLater(() => service.forwardInput(key, text));
-            } else if (service) {
-                service.forwardInput(key, text);
-            }
             event.accepted = true;
         }
 
@@ -277,7 +361,8 @@ WlSessionLockSurface {
             width: 420
             height: 340
             z: 30
-            visible: root.isPrimary
+            visible: root.isPrimary && (root.authCardVisible || opacity > 0)
+            enabled: root.isPrimary && root.authCardVisible
             opacity: root.authCardVisible ? 1 : 0
             scale: root.authCardVisible ? 1 : 0.96
             radius: ThemeManager.selectedTheme.dimensions.elementRadius
@@ -287,16 +372,35 @@ WlSessionLockSurface {
 
             transform: Translate {
                 y: root.authCardVisible ? 0 : 16
-                Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                Behavior on y {
+                    NumberAnimation {
+                        duration: 240
+                        easing.type: Easing.OutCubic
+                    }
+                }
             }
 
-            Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-            Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 240
+                    easing.type: Easing.OutCubic
+                }
+            }
+            Behavior on scale {
+                NumberAnimation {
+                    duration: 240
+                    easing.type: Easing.OutCubic
+                }
+            }
 
             HoverHandler {
+                enabled: root.pointerReady && root.authCardVisible
                 onHoveredChanged: {
-                    if (hovered)
+                    if (hovered) {
+                        if (service)
+                            service.noteActivity("pointer");
                         root.revealAuthCard("card-hover");
+                    }
                 }
             }
 
@@ -316,9 +420,7 @@ WlSessionLockSurface {
                     Image {
                         anchors.fill: parent
                         fillMode: Image.PreserveAspectCrop
-                        source: App.profilePicture
-                            ? Qt.resolvedUrl(App.profilePicture)
-                            : Qt.resolvedUrl(App.assetsPath + "/icons/profile-modified.png")
+                        source: App.profilePicture ? Qt.resolvedUrl(App.profilePicture) : Qt.resolvedUrl(App.assetsPath + "/icons/profile-modified.png")
                     }
                 }
 
@@ -350,18 +452,29 @@ WlSessionLockSurface {
                     placeholderText: qsTr("Password")
                     focus: true
                     maximumLength: 256
-                    text: service ? service.passwordBuffer : ""
                     color: ThemeManager.selectedTheme.colors.onSurface
                     font.family: ThemeManager.selectedTheme.typography.bodyFont
                     font.pixelSize: ThemeManager.selectedTheme.typography.medium
 
-                    Keys.onPressed: event => root.revealAuthCard("field-key")
+                    Keys.onPressed: event => {
+                        if (service)
+                            service.noteActivity("key");
+                        root.revealAuthCard("field-key");
+                    }
+                    Keys.onEscapePressed: event => {
+                        if (!service || !service.pamVerifying) {
+                            root.authCardVisible = false;
+                            autoHideTimer.stop();
+                            Qt.callLater(() => lockContent.forceActiveFocus());
+                        }
+                        event.accepted = true;
+                    }
 
                     onTextEdited: {
                         if (service)
                             service.noteActivity("key");
                         root.revealAuthCard("typing");
-                        if (service)
+                        if (service && service.passwordBuffer !== text)
                             service.passwordBuffer = text;
                     }
                     onAccepted: {
@@ -377,16 +490,17 @@ WlSessionLockSurface {
                         border.width: 1
                     }
 
-                    Component.onCompleted: passwordField.forceActiveFocus()
+                    Component.onCompleted: {
+                        root.syncPasswordFieldFromService();
+                        Qt.callLater(root.focusPasswordField);
+                    }
                 }
 
                 Text {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     text: service && service.lastError !== "" ? service.lastError : (service ? service.pamStatus : "")
-                    color: service && service.lastError !== ""
-                        ? ThemeManager.selectedTheme.colors.error
-                        : ThemeManager.selectedTheme.colors.onSurfaceVariant
+                    color: service && service.lastError !== "" ? ThemeManager.selectedTheme.colors.error : ThemeManager.selectedTheme.colors.onSurfaceVariant
                     font.family: ThemeManager.selectedTheme.typography.bodyFont
                     font.pixelSize: ThemeManager.selectedTheme.typography.small
                     wrapMode: Text.Wrap
@@ -399,6 +513,7 @@ WlSessionLockSurface {
                     MButton {
                         Layout.fillWidth: true
                         text: qsTr("Unlock")
+                        enabled: !service || !service.pamVerifying
                         onClicked: {
                             if (service)
                                 service.noteActivity("pointer");
@@ -425,10 +540,13 @@ WlSessionLockSurface {
 
         Connections {
             target: service
+            function onPasswordBufferChanged() {
+                root.syncPasswordFieldFromService();
+            }
             function onPasswordFocusRequested(name: string) {
                 // Focus only: do not force the card visible on initial lock.
-                if (name === screenName && passwordField)
-                    Qt.callLater(() => passwordField.forceActiveFocus());
+                if (name === screenName && root.authCardVisible)
+                    Qt.callLater(root.focusPasswordField);
             }
             function onPamVerifyingChanged() {
                 if (service.pamVerifying)
@@ -439,10 +557,14 @@ WlSessionLockSurface {
                     root.revealAuthCard("pam-error");
             }
             function onUnlockingChanged() {
-                if (!service.unlocking)
-                    return;
-                root.authCardVisible = false;
-                root.frameExpanded = false;
+                if (service.unlocking) {
+                    expandDelay.stop();
+                    autoHideTimer.stop();
+                    root.authCardVisible = false;
+                    root.frameExpanded = false;
+                } else if (service.lockRequested) {
+                    root.frameExpanded = true;
+                }
             }
             function onDpmsOffChanged() {
                 if (service.dpmsOff) {

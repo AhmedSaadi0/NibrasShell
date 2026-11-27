@@ -97,18 +97,18 @@ PanelWindow {
             name: "Todo"
             notificationCount: 0
         }
-        ListElement {
-            icon: "󰊿"
-            activeIcon: "󰗊"
-            name: "Translator"
-            notificationCount: 0
-        }
-        ListElement {
-            icon: "󱙺"
-            activeIcon: "󰚩"
-            name: "AI Bot"
-            notificationCount: 0
-        }
+        // ListElement {
+        //     icon: "󰊿"
+        //     activeIcon: "󰗊"
+        //     name: "Translator"
+        //     notificationCount: 0
+        // }
+        // ListElement {
+        //     icon: "󱙺"
+        //     activeIcon: "󰚩"
+        //     name: "AI Bot"
+        //     notificationCount: 0
+        // }
     }
 
     // [المجموعة السفلية - التطبيقات]
